@@ -1,9 +1,8 @@
-# Nav2 parameters tuned for RTAB-Map localization and a low-speed chassis.
+# 面向 RTAB-Map 定位和低速底盘调过的 Nav2 参数。
 #
-# This profile targets terminal yaw oscillation with Regulated Pure Pursuit:
-# after reaching the target XY position, the robot should slow down, stop
-# translating, and rotate with a modest angular velocity instead of repeatedly
-# reversing angular direction near the goal heading.
+# 这份配置主要用于缓解 Regulated Pure Pursuit 的终点朝向摇摆问题：
+# 机器人到达目标 XY 位置后，应先降低线速度并停止平移，再用较温和的角速度
+# 对齐最终朝向，避免在目标角度附近提前反向并反复摆动。
 
 map_server:
   ros__parameters:
@@ -55,18 +54,17 @@ controller_server:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       desired_linear_vel: 0.12
 
-      # Keep the carrot close at low speed. A 0.5 m minimum lookahead is large
-      # for a 0.15 m/s robot and can keep the controller translating around the
-      # final pose instead of cleanly entering terminal yaw alignment.
+      # 低速行驶时让前视点更靠近机器人。对于 0.15 m/s 左右的底盘，
+      # 0.5 m 的最小前视距离偏大，容易让控制器在终点附近继续平移绕点，
+      # 而不是干净地进入终点朝向对齐。
       lookahead_dist: 0.25
       min_lookahead_dist: 0.15
       max_lookahead_dist: 0.60
       use_velocity_scaled_lookahead_dist: true
       lookahead_time: 1.0
 
-      # Terminal rotation should be slower than the chassis' hard capability.
-      # High angular velocity plus localization latency often appears as
-      # "reversing before reaching the requested yaw".
+      # 终点旋转速度应低于底盘能力上限。较高角速度叠加定位延迟时，
+      # 常表现为“还没到目标角度就提前反向”。
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.50
       rotate_to_heading_angular_vel: 0.35

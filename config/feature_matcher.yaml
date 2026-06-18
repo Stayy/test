@@ -31,3 +31,19 @@ scan_feature_matcher:
     # Reject impossible per-scan chassis motion.
     max_motion_translation: 1.2
     max_motion_rotation: 0.8
+
+    # Custom landmark: a fence made from 5 small poles spaced by 10 cm.
+    custom_pattern_enabled: true
+    pole_cluster_jump_threshold: 0.06
+    pole_min_points: 1
+    pole_max_points: 12
+    pole_min_width: 0.0
+    pole_max_width: 0.08
+    pole_max_range: 6.0
+    fence_pole_count: 5
+    fence_spacing: 0.10
+    fence_spacing_tolerance: 0.03
+    fence_collinearity_tolerance: 0.025
+    fence_max_pattern_error: 0.035
+    fence_max_candidate_poles: 30
+    fence_max_detections: 3

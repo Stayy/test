@@ -6,7 +6,7 @@ import math
 from typing import List, Optional
 
 import rclpy
-from geometry_msgs.msg import Point, TransformStamped
+from geometry_msgs.msg import Point, Pose, PoseArray, TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
@@ -24,6 +24,12 @@ from .matching import (
     estimate_transform,
     extract_features,
     match_features,
+)
+from .patterns import (
+    FenceDetection,
+    PoleDetection,
+    PolePatternConfig,
+    detect_fences_from_scan,
 )
 
 
@@ -44,12 +50,17 @@ class ScanFeatureMatcherNode(Node):
         self.last_scan_time = None
         self.last_delta: Optional[Transform2D] = None
         self.last_matches: List[FeatureMatch] = []
+        self.last_poles: List[PoleDetection] = []
+        self.last_fences: List[FenceDetection] = []
 
         self.odom_pub = self.create_publisher(
             Odometry, "scan_feature_matcher/odom", 10
         )
         self.marker_pub = self.create_publisher(
             MarkerArray, "scan_feature_matcher/markers", 10
+        )
+        self.fence_pose_pub = self.create_publisher(
+            PoseArray, "scan_feature_matcher/fence_poses", 10
         )
         self.tf_broadcaster = (
             TransformBroadcaster(self) if self.publish_tf else None
@@ -91,12 +102,28 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("max_motion_translation", 1.2)
         self.declare_parameter("max_motion_rotation", 0.8)
 
+        self.declare_parameter("custom_pattern_enabled", True)
+        self.declare_parameter("pole_cluster_jump_threshold", 0.06)
+        self.declare_parameter("pole_min_points", 1)
+        self.declare_parameter("pole_max_points", 12)
+        self.declare_parameter("pole_min_width", 0.0)
+        self.declare_parameter("pole_max_width", 0.08)
+        self.declare_parameter("pole_max_range", 6.0)
+        self.declare_parameter("fence_pole_count", 5)
+        self.declare_parameter("fence_spacing", 0.10)
+        self.declare_parameter("fence_spacing_tolerance", 0.03)
+        self.declare_parameter("fence_collinearity_tolerance", 0.025)
+        self.declare_parameter("fence_max_pattern_error", 0.035)
+        self.declare_parameter("fence_max_candidate_poles", 30)
+        self.declare_parameter("fence_max_detections", 3)
+
     def _scan_callback(self, scan: LaserScan) -> None:
+        ranges = list(scan.ranges)
         extraction_config = self._extraction_config()
         matching_config = self._matching_config()
 
         features = extract_features(
-            list(scan.ranges),
+            ranges,
             scan.angle_min,
             scan.angle_increment,
             scan.range_min,
@@ -106,6 +133,7 @@ class ScanFeatureMatcherNode(Node):
             laser_y=float(self.get_parameter("laser_y").value),
             laser_yaw=float(self.get_parameter("laser_yaw").value),
         )
+        poles, fences = self._detect_custom_patterns(scan, ranges)
 
         matches: List[FeatureMatch] = []
         delta: Optional[Transform2D] = None
@@ -132,8 +160,11 @@ class ScanFeatureMatcherNode(Node):
                     f"features={len(features)} matches={len(matches)}"
                 )
 
-        self._publish_markers(scan, features, matches, delta)
+        self._publish_fence_poses(scan, fences)
+        self._publish_markers(scan, features, matches, delta, poles, fences)
         self.previous_features = features
+        self.last_poles = poles
+        self.last_fences = fences
         self.last_scan_time = scan.header.stamp
 
     def _extraction_config(self) -> FeatureExtractionConfig:
@@ -166,6 +197,61 @@ class ScanFeatureMatcherNode(Node):
             ),
             max_ransac_trials=int(self.get_parameter("max_ransac_trials").value),
         )
+
+    def _pattern_config(self) -> PolePatternConfig:
+        return PolePatternConfig(
+            pole_cluster_jump_threshold=float(
+                self.get_parameter("pole_cluster_jump_threshold").value
+            ),
+            pole_min_points=int(self.get_parameter("pole_min_points").value),
+            pole_max_points=int(self.get_parameter("pole_max_points").value),
+            pole_min_width=float(self.get_parameter("pole_min_width").value),
+            pole_max_width=float(self.get_parameter("pole_max_width").value),
+            pole_max_range=float(self.get_parameter("pole_max_range").value),
+            fence_pole_count=int(self.get_parameter("fence_pole_count").value),
+            fence_spacing=float(self.get_parameter("fence_spacing").value),
+            fence_spacing_tolerance=float(
+                self.get_parameter("fence_spacing_tolerance").value
+            ),
+            fence_collinearity_tolerance=float(
+                self.get_parameter("fence_collinearity_tolerance").value
+            ),
+            fence_max_pattern_error=float(
+                self.get_parameter("fence_max_pattern_error").value
+            ),
+            fence_max_candidate_poles=int(
+                self.get_parameter("fence_max_candidate_poles").value
+            ),
+            fence_max_detections=int(
+                self.get_parameter("fence_max_detections").value
+            ),
+        )
+
+    def _detect_custom_patterns(
+        self, scan: LaserScan, ranges: List[float]
+    ) -> tuple[List[PoleDetection], List[FenceDetection]]:
+        if not bool(self.get_parameter("custom_pattern_enabled").value):
+            return [], []
+
+        poles, fences = detect_fences_from_scan(
+            ranges,
+            scan.angle_min,
+            scan.angle_increment,
+            scan.range_min,
+            scan.range_max,
+            self._pattern_config(),
+            laser_x=float(self.get_parameter("laser_x").value),
+            laser_y=float(self.get_parameter("laser_y").value),
+            laser_yaw=float(self.get_parameter("laser_yaw").value),
+        )
+        if fences:
+            best = fences[0]
+            self.get_logger().debug(
+                "custom fence detected: "
+                f"poles={len(best.poles)} center=({best.center_x:.3f}, "
+                f"{best.center_y:.3f}) yaw={best.yaw:.3f} score={best.score:.3f}"
+            )
+        return poles, fences
 
     def _motion_is_plausible(self, delta: Transform2D) -> bool:
         max_translation = float(self.get_parameter("max_motion_translation").value)
@@ -210,12 +296,29 @@ class ScanFeatureMatcherNode(Node):
         transform.transform.rotation.w = math.cos(self.pose.yaw * 0.5)
         self.tf_broadcaster.sendTransform(transform)
 
+    def _publish_fence_poses(
+        self, scan: LaserScan, fences: List[FenceDetection]
+    ) -> None:
+        poses = PoseArray()
+        poses.header.stamp = scan.header.stamp
+        poses.header.frame_id = self.base_frame
+        for fence in fences:
+            pose = Pose()
+            pose.position.x = fence.center_x
+            pose.position.y = fence.center_y
+            pose.orientation.z = math.sin(fence.yaw * 0.5)
+            pose.orientation.w = math.cos(fence.yaw * 0.5)
+            poses.poses.append(pose)
+        self.fence_pose_pub.publish(poses)
+
     def _publish_markers(
         self,
         scan: LaserScan,
         features: List[ScanFeature],
         matches: List[FeatureMatch],
         delta: Optional[Transform2D],
+        poles: List[PoleDetection],
+        fences: List[FenceDetection],
     ) -> None:
         marker_array = MarkerArray()
         delete_marker = Marker()
@@ -231,6 +334,9 @@ class ScanFeatureMatcherNode(Node):
             self._feature_marker(scan, features, "edge", 2, (1.0, 0.7, 0.1))
         )
         marker_array.markers.append(self._match_marker(scan, matches, delta))
+        marker_array.markers.append(self._pole_marker(scan, poles))
+        marker_array.markers.append(self._fence_marker(scan, fences))
+        marker_array.markers.append(self._fence_center_marker(scan, fences))
         self.marker_pub.publish(marker_array)
 
     def _feature_marker(
@@ -291,6 +397,73 @@ class ScanFeatureMatcherNode(Node):
             marker.points.append(
                 Point(x=match.previous.x, y=match.previous.y, z=0.02)
             )
+        return marker
+
+    def _pole_marker(
+        self, scan: LaserScan, poles: List[PoleDetection]
+    ) -> Marker:
+        marker = Marker()
+        marker.header.stamp = scan.header.stamp
+        marker.header.frame_id = self.base_frame
+        marker.ns = "custom_pole_candidates"
+        marker.id = 4
+        marker.type = Marker.SPHERE_LIST
+        marker.action = Marker.ADD
+        marker.scale.x = 0.05
+        marker.scale.y = 0.05
+        marker.scale.z = 0.05
+        marker.color.r = 0.7
+        marker.color.g = 0.2
+        marker.color.b = 1.0
+        marker.color.a = 0.9
+        marker.points = [
+            Point(x=pole.x, y=pole.y, z=0.08) for pole in poles
+        ]
+        return marker
+
+    def _fence_marker(
+        self, scan: LaserScan, fences: List[FenceDetection]
+    ) -> Marker:
+        marker = Marker()
+        marker.header.stamp = scan.header.stamp
+        marker.header.frame_id = self.base_frame
+        marker.ns = "custom_five_pole_fence"
+        marker.id = 5
+        marker.type = Marker.LINE_LIST
+        marker.action = Marker.ADD
+        marker.scale.x = 0.035
+        marker.color.r = 1.0
+        marker.color.g = 0.05
+        marker.color.b = 0.05
+        marker.color.a = 0.95
+
+        for fence in fences:
+            for first, second in zip(fence.poles, fence.poles[1:]):
+                marker.points.append(Point(x=first.x, y=first.y, z=0.12))
+                marker.points.append(Point(x=second.x, y=second.y, z=0.12))
+        return marker
+
+    def _fence_center_marker(
+        self, scan: LaserScan, fences: List[FenceDetection]
+    ) -> Marker:
+        marker = Marker()
+        marker.header.stamp = scan.header.stamp
+        marker.header.frame_id = self.base_frame
+        marker.ns = "custom_fence_centers"
+        marker.id = 6
+        marker.type = Marker.SPHERE_LIST
+        marker.action = Marker.ADD
+        marker.scale.x = 0.09
+        marker.scale.y = 0.09
+        marker.scale.z = 0.09
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.color.a = 1.0
+        marker.points = [
+            Point(x=fence.center_x, y=fence.center_y, z=0.18)
+            for fence in fences
+        ]
         return marker
 
     def _scan_period_seconds(self, scan: LaserScan) -> float:

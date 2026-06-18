@@ -36,6 +36,9 @@ class PolePatternConfig:
     line_group_max_anchor_gap: float = 0.18
     line_hypothesis_lateral_tolerance: float = 0.05
     line_hypothesis_endpoint_margin: float = 0.06
+    line_isolation_enabled: bool = True
+    line_isolation_lateral_tolerance: float = 0.08
+    line_isolation_extension: float = 0.20
     line_max_detections: int = 5
 
 
@@ -209,8 +212,9 @@ def detect_line_features_from_scan(
         if detection is not None:
             detections.append(detection)
 
-    detections.extend(_detect_grouped_line_features(points, config))
-    detections.extend(_detect_hypothesis_line_features(points, config))
+    anchors = _line_anchors_from_points(points, config)
+    detections.extend(_detect_grouped_line_features(anchors, config))
+    detections.extend(_detect_hypothesis_line_features(anchors, config))
     return _select_line_features(detections, config.line_max_detections)
 
 
@@ -367,9 +371,8 @@ def _cluster_to_line_feature(
 
 
 def _detect_grouped_line_features(
-    points: Sequence[ScanPoint], config: PolePatternConfig
+    anchors: Sequence[_LineAnchor], config: PolePatternConfig
 ) -> List[LineFeatureDetection]:
-    anchors = _line_anchors_from_points(points, config)
     if len(anchors) < config.line_min_anchor_count:
         return []
 
@@ -389,6 +392,8 @@ def _detect_grouped_line_features(
             previous_anchor = anchor
             if len(group) < config.line_min_anchor_count:
                 continue
+            if not _line_group_is_isolated(group, anchors, config):
+                continue
             detection = _anchors_to_line_feature(group, config)
             if detection is not None:
                 detections.append(detection)
@@ -396,9 +401,8 @@ def _detect_grouped_line_features(
 
 
 def _detect_hypothesis_line_features(
-    points: Sequence[ScanPoint], config: PolePatternConfig
+    anchors: Sequence[_LineAnchor], config: PolePatternConfig
 ) -> List[LineFeatureDetection]:
-    anchors = _line_anchors_from_points(points, config)
     if len(anchors) < config.line_min_anchor_count:
         return []
 
@@ -412,6 +416,8 @@ def _detect_hypothesis_line_features(
 
         yaw = math.atan2(second.y - first.y, second.x - first.x)
         for group in _line_inlier_anchor_groups(first, second, yaw, anchors, config):
+            if not _line_group_is_isolated(group, anchors, config):
+                continue
             detection = _anchors_to_line_feature(group, config)
             if detection is not None:
                 detections.append(detection)
@@ -480,6 +486,48 @@ def _line_inlier_anchor_groups(
     if len(current_group) >= config.line_min_anchor_count:
         groups.append(current_group)
     return groups
+
+
+def _line_group_is_isolated(
+    group: Sequence[_LineAnchor],
+    all_anchors: Sequence[_LineAnchor],
+    config: PolePatternConfig,
+) -> bool:
+    if not config.line_isolation_enabled:
+        return True
+    if len(group) < 2:
+        return True
+
+    group_indices = {
+        index for anchor in group for index in anchor.scan_indices
+    }
+    point_count = sum(anchor.point_count for anchor in group)
+    center_x = sum(anchor.x * anchor.point_count for anchor in group) / point_count
+    center_y = sum(anchor.y * anchor.point_count for anchor in group) / point_count
+    yaw = _principal_axis_yaw_for_anchors(group, center_x, center_y)
+    axis_x = math.cos(yaw)
+    axis_y = math.sin(yaw)
+    projections = [
+        (anchor.x - center_x) * axis_x + (anchor.y - center_y) * axis_y
+        for anchor in group
+    ]
+    min_projection = min(projections) - config.line_isolation_extension
+    max_projection = max(projections) + config.line_isolation_extension
+
+    for anchor in all_anchors:
+        if group_indices & set(anchor.scan_indices):
+            continue
+        dx = anchor.x - center_x
+        dy = anchor.y - center_y
+        along = dx * axis_x + dy * axis_y
+        across = -dx * axis_y + dy * axis_x
+        lateral_error = abs(across) + anchor.width * 0.5
+        if (
+            min_projection <= along <= max_projection
+            and lateral_error <= config.line_isolation_lateral_tolerance
+        ):
+            return False
+    return True
 
 
 def _cluster_to_line_anchor(

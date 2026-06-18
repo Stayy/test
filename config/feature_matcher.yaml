@@ -104,6 +104,9 @@ scan_feature_matcher:
     # line_group_max_anchor_gap：同一短线内相邻锚点允许的最大间距，蓝色框识别不到时优先增大。
     # line_hypothesis_lateral_tolerance：直线假设筛内点时允许的横向距离，左侧带噪声/轻微粘连时可增大。
     # line_hypothesis_endpoint_margin：直线两端额外搜索余量，端点漏检时可增大。
+    # line_isolation_enabled：是否要求短线周围为空；用于过滤黄色框这类墙面。
+    # line_isolation_lateral_tolerance：检查周围是否为空时的横向范围，单位 m。
+    # line_isolation_extension：检查短线两端是否继续延伸时的长度，墙面误检时可增大。
     # line_max_detections：每帧最多输出几个短线特征。
     line_cluster_jump_threshold: 0.16
     line_min_points: 5
@@ -116,4 +119,7 @@ scan_feature_matcher:
     line_group_max_anchor_gap: 0.18
     line_hypothesis_lateral_tolerance: 0.05
     line_hypothesis_endpoint_margin: 0.06
+    line_isolation_enabled: true
+    line_isolation_lateral_tolerance: 0.08
+    line_isolation_extension: 0.20
     line_max_detections: 5

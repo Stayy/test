@@ -99,6 +99,9 @@ line_min_anchor_count: 3
 line_group_max_anchor_gap: 0.18
 line_hypothesis_lateral_tolerance: 0.05
 line_hypothesis_endpoint_margin: 0.06
+line_isolation_enabled: true
+line_isolation_lateral_tolerance: 0.08
+line_isolation_extension: 0.20
 line_max_detections: 5
 ```
 
@@ -113,6 +116,7 @@ line_max_detections: 5
 - 连成一段的黄色短线识别不到：增大 `line_cluster_jump_threshold`、放宽 `line_max_width`，或降低 `line_min_points`。
 - 蓝色框这类分离小簇没有合成短线：增大 `line_group_max_anchor_gap`，或降低 `line_min_anchor_count`。
 - 左右两类目标旁边有离群点导致漏检：增大 `line_hypothesis_lateral_tolerance` 或 `line_hypothesis_endpoint_margin`。
+- 黄色框墙面被误识别为目标：保持 `line_isolation_enabled: true`，增大 `line_isolation_extension` 或 `line_isolation_lateral_tolerance`。
 - 把底盘弧线也误识别成黄色特征：减小 `line_max_width` 或收紧 `line_min_length`/`line_max_length`。
 
 ## 可视化

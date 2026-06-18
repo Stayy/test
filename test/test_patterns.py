@@ -208,6 +208,35 @@ class PatternDetectionTest(unittest.TestCase):
 
         self.assertEqual(features, [])
 
+    def test_rejects_wall_segments_because_line_is_not_isolated(self):
+        wall_points = [(2.0, y) for y in (-0.55, -0.44, -0.33, -0.22, -0.11, 0.0, 0.11, 0.22, 0.33, 0.44, 0.55)]
+        ranges, angle_min, angle_increment = _scan_for_points(wall_points)
+        config = PolePatternConfig(
+            line_cluster_jump_threshold=0.14,
+            line_min_points=4,
+            line_min_length=0.25,
+            line_max_length=0.55,
+            line_max_width=0.04,
+            line_anchor_cluster_jump_threshold=0.03,
+            line_min_anchor_count=4,
+            line_group_max_anchor_gap=0.15,
+            line_hypothesis_lateral_tolerance=0.04,
+            line_isolation_enabled=True,
+            line_isolation_lateral_tolerance=0.08,
+            line_isolation_extension=0.18,
+        )
+
+        features = detect_line_features_from_scan(
+            ranges,
+            angle_min,
+            angle_increment,
+            range_min=0.05,
+            range_max=10.0,
+            config=config,
+        )
+
+        self.assertEqual(features, [])
+
 
 def _scan_for_points(points):
     angle_min = -0.40

@@ -135,6 +135,9 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("line_group_max_anchor_gap", 0.18)
         self.declare_parameter("line_hypothesis_lateral_tolerance", 0.05)
         self.declare_parameter("line_hypothesis_endpoint_margin", 0.06)
+        self.declare_parameter("line_isolation_enabled", True)
+        self.declare_parameter("line_isolation_lateral_tolerance", 0.08)
+        self.declare_parameter("line_isolation_extension", 0.20)
         self.declare_parameter("line_max_detections", 5)
 
     def _scan_callback(self, scan: LaserScan) -> None:
@@ -271,6 +274,15 @@ class ScanFeatureMatcherNode(Node):
             ),
             line_hypothesis_endpoint_margin=float(
                 self.get_parameter("line_hypothesis_endpoint_margin").value
+            ),
+            line_isolation_enabled=bool(
+                self.get_parameter("line_isolation_enabled").value
+            ),
+            line_isolation_lateral_tolerance=float(
+                self.get_parameter("line_isolation_lateral_tolerance").value
+            ),
+            line_isolation_extension=float(
+                self.get_parameter("line_isolation_extension").value
             ),
             line_max_detections=int(
                 self.get_parameter("line_max_detections").value

@@ -107,6 +107,44 @@ class PatternDetectionTest(unittest.TestCase):
         self.assertAlmostEqual(features[0].length, 0.48, places=2)
         self.assertEqual(features[0].point_count, 5)
 
+    def test_detects_line_feature_with_endpoint_duplicate_return(self):
+        ranges, angle_min, angle_increment = _scan_for_points(
+            [
+                (2.0, -0.24),
+                (1.96, -0.22),
+                (2.0, -0.12),
+                (2.0, 0.0),
+                (2.0, 0.12),
+                (2.0, 0.24),
+            ]
+        )
+        config = PolePatternConfig(
+            line_cluster_jump_threshold=0.08,
+            line_min_points=5,
+            line_min_length=0.25,
+            line_max_length=0.75,
+            line_max_width=0.04,
+            line_anchor_cluster_jump_threshold=0.03,
+            line_min_anchor_count=5,
+            line_min_anchor_spacing=0.10,
+            line_group_max_anchor_gap=0.16,
+            line_hypothesis_lateral_tolerance=0.04,
+            line_isolation_enabled=True,
+        )
+
+        features = detect_line_features_from_scan(
+            ranges,
+            angle_min,
+            angle_increment,
+            range_min=0.05,
+            range_max=10.0,
+            config=config,
+        )
+
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0].point_count, 5)
+        self.assertAlmostEqual(features[0].length, 0.48, places=2)
+
     def test_line_hypothesis_ignores_nearby_outlier(self):
         ranges, angle_min, angle_increment = _scan_for_points(
             [

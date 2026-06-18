@@ -131,7 +131,7 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("line_max_width", 0.08)
         self.declare_parameter("line_max_range", 6.0)
         self.declare_parameter("line_anchor_cluster_jump_threshold", 0.06)
-        self.declare_parameter("line_min_anchor_count", 3)
+        self.declare_parameter("line_min_anchor_count", 4)
         self.declare_parameter("line_min_anchor_spacing", 0.10)
         self.declare_parameter("line_group_max_anchor_gap", 0.18)
         self.declare_parameter("line_hypothesis_lateral_tolerance", 0.05)

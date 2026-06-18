@@ -116,7 +116,7 @@ scan_feature_matcher:
     line_max_width: 0.08
     line_max_range: 6.0
     line_anchor_cluster_jump_threshold: 0.06
-    line_min_anchor_count: 3
+    line_min_anchor_count: 4
     line_min_anchor_spacing: 0.10
     line_group_max_anchor_gap: 0.18
     line_hypothesis_lateral_tolerance: 0.05

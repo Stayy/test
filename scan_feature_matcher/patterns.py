@@ -32,7 +32,7 @@ class PolePatternConfig:
     line_max_width: float = 0.08
     line_max_range: float = 6.0
     line_anchor_cluster_jump_threshold: float = 0.06
-    line_min_anchor_count: int = 3
+    line_min_anchor_count: int = 4
     line_min_anchor_spacing: float = 0.10
     line_group_max_anchor_gap: float = 0.18
     line_hypothesis_lateral_tolerance: float = 0.05
@@ -395,9 +395,9 @@ def _detect_grouped_line_features(
                 continue
             if not _line_group_is_isolated(group, anchors, config):
                 continue
-            detection = _anchors_to_line_feature(group, config)
-            if detection is not None:
-                detections.append(detection)
+            detections.extend(
+                _line_feature_candidates_from_group(group, anchors, config)
+            )
     return detections
 
 
@@ -419,9 +419,9 @@ def _detect_hypothesis_line_features(
         for group in _line_inlier_anchor_groups(first, second, yaw, anchors, config):
             if not _line_group_is_isolated(group, anchors, config):
                 continue
-            detection = _anchors_to_line_feature(group, config)
-            if detection is not None:
-                detections.append(detection)
+            detections.extend(
+                _line_feature_candidates_from_group(group, anchors, config)
+            )
     return detections
 
 
@@ -523,6 +523,15 @@ def _line_group_is_isolated(
         along = dx * axis_x + dy * axis_y
         across = -dx * axis_y + dy * axis_x
         lateral_error = abs(across) + anchor.width * 0.5
+        duplicate_tolerance = min(0.05, config.line_min_anchor_spacing * 0.5)
+        if (
+            lateral_error <= config.line_isolation_lateral_tolerance
+            and any(
+                abs(along - projection) <= duplicate_tolerance
+                for projection in projections
+            )
+        ):
+            continue
         if (
             min_projection <= along <= max_projection
             and lateral_error <= config.line_isolation_lateral_tolerance
@@ -560,9 +569,43 @@ def _cluster_to_line_anchor(
     )
 
 
+def _line_feature_candidates_from_group(
+    anchors: Sequence[_LineAnchor],
+    all_anchors: Sequence[_LineAnchor],
+    config: PolePatternConfig,
+) -> List[LineFeatureDetection]:
+    if not _line_group_is_isolated(anchors, all_anchors, config):
+        return []
+
+    direct = _anchors_to_line_feature(anchors, config)
+    if direct is not None:
+        return [direct]
+
+    # A real target can produce one extra near-duplicate return at an end.
+    # Try subsets so that a single duplicate does not invalidate the template.
+    if len(anchors) <= config.line_min_anchor_count:
+        return []
+
+    candidates: List[LineFeatureDetection] = []
+    max_subset_size = min(len(anchors) - 1, config.fence_pole_count + 1)
+    for subset_size in range(max_subset_size, config.line_min_anchor_count - 1, -1):
+        for subset in combinations(anchors, subset_size):
+            if not _line_group_is_isolated(subset, all_anchors, config):
+                continue
+            detection = _anchors_to_line_feature(subset, config)
+            if detection is not None:
+                candidates.append(detection)
+        if candidates:
+            break
+    return candidates
+
+
 def _anchors_to_line_feature(
     anchors: Sequence[_LineAnchor], config: PolePatternConfig
 ) -> Optional[LineFeatureDetection]:
+    if len(anchors) < config.line_min_anchor_count:
+        return None
+
     point_count = sum(anchor.point_count for anchor in anchors)
     if point_count < config.line_min_points:
         return None

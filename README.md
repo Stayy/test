@@ -94,6 +94,9 @@ line_min_length: 0.25
 line_max_length: 0.75
 line_max_width: 0.08
 line_max_range: 6.0
+line_anchor_cluster_jump_threshold: 0.06
+line_min_anchor_count: 3
+line_group_max_anchor_gap: 0.18
 line_max_detections: 5
 ```
 
@@ -105,7 +108,8 @@ line_max_detections: 5
 - 误把其他物体识别成柱子：减小 `pole_max_width`、`pole_max_range`，或增大 `pole_min_points`。
 - 五根柱子已识别但栅栏不输出：增大 `fence_spacing_tolerance` 或 `fence_collinearity_tolerance`。
 - 误识别栅栏：减小 `fence_spacing_tolerance`、`fence_collinearity_tolerance` 或 `fence_max_pattern_error`。
-- 黄色框里的短线识别不到：增大 `line_cluster_jump_threshold`、放宽 `line_max_width`，或降低 `line_min_points`。
+- 连成一段的黄色短线识别不到：增大 `line_cluster_jump_threshold`、放宽 `line_max_width`，或降低 `line_min_points`。
+- 蓝色框这类分离小簇没有合成短线：增大 `line_group_max_anchor_gap`，或降低 `line_min_anchor_count`。
 - 把底盘弧线也误识别成黄色特征：减小 `line_max_width` 或收紧 `line_min_length`/`line_max_length`。
 
 ## 可视化

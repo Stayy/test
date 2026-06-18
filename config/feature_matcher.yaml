@@ -99,6 +99,9 @@ scan_feature_matcher:
     # line_min_length / line_max_length：短线特征长度范围，单位 m。
     # line_max_width：短线厚度/离直线的最大宽度，越小越不容易把弧线误识别成直线。
     # line_max_range：只识别该距离以内的短线特征，单位 m。
+    # line_anchor_cluster_jump_threshold：先把连续小点聚成锚点，超过该距离就分成不同锚点。
+    # line_min_anchor_count：蓝色框这类分离小簇至少需要多少个锚点才能合成短线。
+    # line_group_max_anchor_gap：同一短线内相邻锚点允许的最大间距，蓝色框识别不到时优先增大。
     # line_max_detections：每帧最多输出几个短线特征。
     line_cluster_jump_threshold: 0.16
     line_min_points: 5
@@ -106,4 +109,7 @@ scan_feature_matcher:
     line_max_length: 0.75
     line_max_width: 0.08
     line_max_range: 6.0
+    line_anchor_cluster_jump_threshold: 0.06
+    line_min_anchor_count: 3
+    line_group_max_anchor_gap: 0.18
     line_max_detections: 5

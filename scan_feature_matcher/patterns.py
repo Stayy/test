@@ -31,6 +31,9 @@ class PolePatternConfig:
     line_max_length: float = 0.75
     line_max_width: float = 0.08
     line_max_range: float = 6.0
+    line_anchor_cluster_jump_threshold: float = 0.06
+    line_min_anchor_count: int = 3
+    line_group_max_anchor_gap: float = 0.18
     line_max_detections: int = 5
 
 
@@ -69,6 +72,15 @@ class LineFeatureDetection:
     score: float
     scan_indices: Tuple[int, ...]
     endpoints: Tuple[Tuple[float, float], Tuple[float, float]]
+
+
+@dataclass(frozen=True)
+class _LineAnchor:
+    x: float
+    y: float
+    width: float
+    point_count: int
+    scan_indices: Tuple[int, ...]
 
 
 def detect_poles_from_scan(
@@ -195,8 +207,8 @@ def detect_line_features_from_scan(
         if detection is not None:
             detections.append(detection)
 
-    detections.sort(key=lambda item: item.score)
-    return detections[: max(0, int(config.line_max_detections))]
+    detections.extend(_detect_grouped_line_features(points, config))
+    return _select_line_features(detections, config.line_max_detections)
 
 
 def _segment_points(
@@ -338,28 +350,114 @@ def _fit_fence(
 def _cluster_to_line_feature(
     cluster: Sequence[ScanPoint], config: PolePatternConfig
 ) -> Optional[LineFeatureDetection]:
-    point_count = len(cluster)
-    if point_count < config.line_min_points:
+    anchors = [
+        _LineAnchor(
+            x=point.x,
+            y=point.y,
+            width=0.0,
+            point_count=1,
+            scan_indices=(point.index,),
+        )
+        for point in cluster
+    ]
+    return _anchors_to_line_feature(anchors, config)
+
+
+def _detect_grouped_line_features(
+    points: Sequence[ScanPoint], config: PolePatternConfig
+) -> List[LineFeatureDetection]:
+    clusters = _segment_points(
+        points, config.line_anchor_cluster_jump_threshold
+    )
+    anchors = [
+        anchor
+        for cluster in clusters
+        for anchor in [_cluster_to_line_anchor(cluster, config)]
+        if anchor is not None
+    ]
+    if len(anchors) < config.line_min_anchor_count:
+        return []
+
+    detections = []
+    for start_index in range(len(anchors)):
+        group: List[_LineAnchor] = []
+        previous_anchor = None
+        for anchor in anchors[start_index:]:
+            if previous_anchor is not None:
+                anchor_gap = math.hypot(
+                    anchor.x - previous_anchor.x,
+                    anchor.y - previous_anchor.y,
+                )
+                if anchor_gap > config.line_group_max_anchor_gap:
+                    break
+            group.append(anchor)
+            previous_anchor = anchor
+            if len(group) < config.line_min_anchor_count:
+                continue
+            detection = _anchors_to_line_feature(group, config)
+            if detection is not None:
+                detections.append(detection)
+    return detections
+
+
+def _cluster_to_line_anchor(
+    cluster: Sequence[ScanPoint], config: PolePatternConfig
+) -> Optional[_LineAnchor]:
+    if not cluster:
         return None
 
+    width = _cluster_width(cluster)
+    max_anchor_width = max(
+        config.line_max_width, config.line_anchor_cluster_jump_threshold
+    )
+    if width > max_anchor_width:
+        return None
+
+    point_count = len(cluster)
     center_x = sum(point.x for point in cluster) / point_count
     center_y = sum(point.y for point in cluster) / point_count
     center_range = math.hypot(center_x, center_y)
     if config.line_max_range > 0.0 and center_range > config.line_max_range:
         return None
 
-    yaw = _principal_axis_yaw_for_points(cluster, center_x, center_y)
+    return _LineAnchor(
+        x=center_x,
+        y=center_y,
+        width=width,
+        point_count=point_count,
+        scan_indices=tuple(point.index for point in cluster),
+    )
+
+
+def _anchors_to_line_feature(
+    anchors: Sequence[_LineAnchor], config: PolePatternConfig
+) -> Optional[LineFeatureDetection]:
+    point_count = sum(anchor.point_count for anchor in anchors)
+    if point_count < config.line_min_points:
+        return None
+
+    center_x = (
+        sum(anchor.x * anchor.point_count for anchor in anchors) / point_count
+    )
+    center_y = (
+        sum(anchor.y * anchor.point_count for anchor in anchors) / point_count
+    )
+    center_range = math.hypot(center_x, center_y)
+    if config.line_max_range > 0.0 and center_range > config.line_max_range:
+        return None
+
+    yaw = _principal_axis_yaw_for_anchors(anchors, center_x, center_y)
     axis_x = math.cos(yaw)
     axis_y = math.sin(yaw)
     projections = []
     lateral_errors = []
-    for point in cluster:
-        dx = point.x - center_x
-        dy = point.y - center_y
+    for anchor in anchors:
+        dx = anchor.x - center_x
+        dy = anchor.y - center_y
         along = dx * axis_x + dy * axis_y
         across = -dx * axis_y + dy * axis_x
         projections.append(along)
-        lateral_errors.append(abs(across))
+        lateral_errors.append(abs(across) + anchor.width * 0.5)
 
     length = max(projections) - min(projections)
     width = max(lateral_errors, default=0.0) * 2.0
@@ -368,7 +466,30 @@ def _cluster_to_line_feature(
     if width > config.line_max_width:
         return None
 
-    if projections[-1] < projections[0]:
+    ordered_projection_indices = sorted(
+        range(len(projections)), key=lambda index: projections[index]
+    )
+    ordered_projections = [projections[index] for index in ordered_projection_indices]
+    max_anchor_gap = max(
+        (
+            ordered_projections[index + 1] - ordered_projections[index]
+            for index in range(len(ordered_projections) - 1)
+        ),
+        default=0.0,
+    )
+    if (
+        len(anchors) > 1
+        and max_anchor_gap > config.line_group_max_anchor_gap
+    ):
+        return None
+
+    first_anchor = anchors[0]
+    last_anchor = anchors[-1]
+    if (
+        (last_anchor.x - first_anchor.x) * axis_x
+        + (last_anchor.y - first_anchor.y) * axis_y
+        < 0.0
+    ):
         yaw = normalize_angle(yaw + math.pi)
         axis_x = math.cos(yaw)
         axis_y = math.sin(yaw)
@@ -382,7 +503,14 @@ def _cluster_to_line_feature(
         center_x + axis_x * half_length,
         center_y + axis_y * half_length,
     )
-    score = _rmse(lateral_errors) + 0.01 / max(point_count, 1)
+    score = (
+        _rmse(lateral_errors)
+        + 0.01 / max(point_count, 1)
+        + 0.001 * max_anchor_gap
+    )
+    scan_indices = tuple(
+        index for anchor in anchors for index in anchor.scan_indices
+    )
     return LineFeatureDetection(
         center_x=center_x,
         center_y=center_y,
@@ -391,9 +519,25 @@ def _cluster_to_line_feature(
         width=width,
         point_count=point_count,
         score=score,
-        scan_indices=tuple(point.index for point in cluster),
+        scan_indices=scan_indices,
         endpoints=(endpoint_a, endpoint_b),
     )
+
+
+def _select_line_features(
+    detections: Sequence[LineFeatureDetection], max_detections: int
+) -> List[LineFeatureDetection]:
+    selected: List[LineFeatureDetection] = []
+    used_indices: List[set] = []
+    for detection in sorted(detections, key=lambda item: item.score):
+        detection_indices = set(detection.scan_indices)
+        if any(detection_indices & used for used in used_indices):
+            continue
+        selected.append(detection)
+        used_indices.append(detection_indices)
+        if len(selected) >= max(0, int(max_detections)):
+            break
+    return selected
 
 
 def _principal_axis_yaw(
@@ -421,6 +565,22 @@ def _principal_axis_yaw_for_points(
         sxx += dx * dx
         syy += dy * dy
         sxy += dx * dy
+    if abs(sxx - syy) + abs(sxy) < 1.0e-12:
+        return 0.0
+    return 0.5 * math.atan2(2.0 * sxy, sxx - syy)
+
+
+def _principal_axis_yaw_for_anchors(
+    anchors: Sequence[_LineAnchor], center_x: float, center_y: float
+) -> float:
+    sxx = syy = sxy = 0.0
+    for anchor in anchors:
+        dx = anchor.x - center_x
+        dy = anchor.y - center_y
+        weight = anchor.point_count
+        sxx += weight * dx * dx
+        syy += weight * dy * dy
+        sxy += weight * dx * dy
     if abs(sxx - syy) + abs(sxy) < 1.0e-12:
         return 0.0
     return 0.5 * math.atan2(2.0 * sxy, sxx - syy)

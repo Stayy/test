@@ -6,6 +6,7 @@ from scan_feature_matcher.patterns import (
     PolePatternConfig,
     detect_fence_patterns,
     detect_fences_from_scan,
+    detect_line_features_from_scan,
 )
 
 
@@ -53,11 +54,61 @@ class PatternDetectionTest(unittest.TestCase):
 
         self.assertEqual(fences, [])
 
+    def test_detects_short_line_feature_from_sparse_scan_points(self):
+        ranges, angle_min, angle_increment = _scan_for_points(
+            [(2.0, -0.20), (2.0, -0.10), (2.0, 0.0), (2.0, 0.10), (2.0, 0.20)]
+        )
+        config = PolePatternConfig(
+            line_cluster_jump_threshold=0.16,
+            line_min_points=5,
+            line_min_length=0.25,
+            line_max_length=0.75,
+            line_max_width=0.03,
+        )
+
+        features = detect_line_features_from_scan(
+            ranges,
+            angle_min,
+            angle_increment,
+            range_min=0.05,
+            range_max=10.0,
+            config=config,
+        )
+
+        self.assertEqual(len(features), 1)
+        self.assertAlmostEqual(features[0].length, 0.40, places=2)
+        self.assertAlmostEqual(features[0].width, 0.0, places=2)
+
+    def test_rejects_curved_cluster_as_line_feature(self):
+        points = [
+            (math.cos(angle), math.sin(angle))
+            for angle in (-0.30, -0.15, 0.0, 0.15, 0.30)
+        ]
+        ranges, angle_min, angle_increment = _scan_for_points(points)
+        config = PolePatternConfig(
+            line_cluster_jump_threshold=0.16,
+            line_min_points=5,
+            line_min_length=0.25,
+            line_max_length=0.75,
+            line_max_width=0.02,
+        )
+
+        features = detect_line_features_from_scan(
+            ranges,
+            angle_min,
+            angle_increment,
+            range_min=0.05,
+            range_max=10.0,
+            config=config,
+        )
+
+        self.assertEqual(features, [])
+
 
 def _scan_for_points(points):
-    angle_min = -0.14
+    angle_min = -0.40
     angle_increment = 0.01
-    ranges = [float("inf")] * 29
+    ranges = [float("inf")] * 81
     for x, y in points:
         bearing = math.atan2(y, x)
         index = round((bearing - angle_min) / angle_increment)

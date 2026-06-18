@@ -27,9 +27,11 @@ from .matching import (
 )
 from .patterns import (
     FenceDetection,
+    LineFeatureDetection,
     PoleDetection,
     PolePatternConfig,
     detect_fences_from_scan,
+    detect_line_features_from_scan,
 )
 
 
@@ -52,6 +54,7 @@ class ScanFeatureMatcherNode(Node):
         self.last_matches: List[FeatureMatch] = []
         self.last_poles: List[PoleDetection] = []
         self.last_fences: List[FenceDetection] = []
+        self.last_line_features: List[LineFeatureDetection] = []
 
         self.odom_pub = self.create_publisher(
             Odometry, "scan_feature_matcher/odom", 10
@@ -61,6 +64,9 @@ class ScanFeatureMatcherNode(Node):
         )
         self.fence_pose_pub = self.create_publisher(
             PoseArray, "scan_feature_matcher/fence_poses", 10
+        )
+        self.line_feature_pose_pub = self.create_publisher(
+            PoseArray, "scan_feature_matcher/line_feature_poses", 10
         )
         self.tf_broadcaster = (
             TransformBroadcaster(self) if self.publish_tf else None
@@ -79,6 +85,7 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("publish_tf", True)
+        self.declare_parameter("visualization_frame", "scan")
 
         # Fixed laser mounting transform from laser frame to base frame.
         self.declare_parameter("laser_x", 0.0)
@@ -103,6 +110,7 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("max_motion_rotation", 0.8)
 
         self.declare_parameter("custom_pattern_enabled", True)
+        self.declare_parameter("custom_pattern_frame", "scan")
         self.declare_parameter("pole_cluster_jump_threshold", 0.06)
         self.declare_parameter("pole_min_points", 1)
         self.declare_parameter("pole_max_points", 12)
@@ -116,6 +124,13 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("fence_max_pattern_error", 0.035)
         self.declare_parameter("fence_max_candidate_poles", 30)
         self.declare_parameter("fence_max_detections", 3)
+        self.declare_parameter("line_cluster_jump_threshold", 0.16)
+        self.declare_parameter("line_min_points", 5)
+        self.declare_parameter("line_min_length", 0.25)
+        self.declare_parameter("line_max_length", 0.75)
+        self.declare_parameter("line_max_width", 0.08)
+        self.declare_parameter("line_max_range", 6.0)
+        self.declare_parameter("line_max_detections", 5)
 
     def _scan_callback(self, scan: LaserScan) -> None:
         ranges = list(scan.ranges)
@@ -133,7 +148,7 @@ class ScanFeatureMatcherNode(Node):
             laser_y=float(self.get_parameter("laser_y").value),
             laser_yaw=float(self.get_parameter("laser_yaw").value),
         )
-        poles, fences = self._detect_custom_patterns(scan, ranges)
+        poles, fences, line_features = self._detect_custom_patterns(scan, ranges)
 
         matches: List[FeatureMatch] = []
         delta: Optional[Transform2D] = None
@@ -161,10 +176,14 @@ class ScanFeatureMatcherNode(Node):
                 )
 
         self._publish_fence_poses(scan, fences)
-        self._publish_markers(scan, features, matches, delta, poles, fences)
+        self._publish_line_feature_poses(scan, line_features)
+        self._publish_markers(
+            scan, features, matches, delta, poles, fences, line_features
+        )
         self.previous_features = features
         self.last_poles = poles
         self.last_fences = fences
+        self.last_line_features = line_features
         self.last_scan_time = scan.header.stamp
 
     def _extraction_config(self) -> FeatureExtractionConfig:
@@ -225,24 +244,48 @@ class ScanFeatureMatcherNode(Node):
             fence_max_detections=int(
                 self.get_parameter("fence_max_detections").value
             ),
+            line_cluster_jump_threshold=float(
+                self.get_parameter("line_cluster_jump_threshold").value
+            ),
+            line_min_points=int(self.get_parameter("line_min_points").value),
+            line_min_length=float(self.get_parameter("line_min_length").value),
+            line_max_length=float(self.get_parameter("line_max_length").value),
+            line_max_width=float(self.get_parameter("line_max_width").value),
+            line_max_range=float(self.get_parameter("line_max_range").value),
+            line_max_detections=int(
+                self.get_parameter("line_max_detections").value
+            ),
         )
 
     def _detect_custom_patterns(
         self, scan: LaserScan, ranges: List[float]
-    ) -> tuple[List[PoleDetection], List[FenceDetection]]:
+    ) -> tuple[List[PoleDetection], List[FenceDetection], List[LineFeatureDetection]]:
         if not bool(self.get_parameter("custom_pattern_enabled").value):
-            return [], []
+            return [], [], []
 
+        laser_x, laser_y, laser_yaw = self._custom_pattern_mount_transform()
+        pattern_config = self._pattern_config()
         poles, fences = detect_fences_from_scan(
             ranges,
             scan.angle_min,
             scan.angle_increment,
             scan.range_min,
             scan.range_max,
-            self._pattern_config(),
-            laser_x=float(self.get_parameter("laser_x").value),
-            laser_y=float(self.get_parameter("laser_y").value),
-            laser_yaw=float(self.get_parameter("laser_yaw").value),
+            pattern_config,
+            laser_x=laser_x,
+            laser_y=laser_y,
+            laser_yaw=laser_yaw,
+        )
+        line_features = detect_line_features_from_scan(
+            ranges,
+            scan.angle_min,
+            scan.angle_increment,
+            scan.range_min,
+            scan.range_max,
+            pattern_config,
+            laser_x=laser_x,
+            laser_y=laser_y,
+            laser_yaw=laser_yaw,
         )
         if fences:
             best = fences[0]
@@ -251,7 +294,34 @@ class ScanFeatureMatcherNode(Node):
                 f"poles={len(best.poles)} center=({best.center_x:.3f}, "
                 f"{best.center_y:.3f}) yaw={best.yaw:.3f} score={best.score:.3f}"
             )
-        return poles, fences
+        if line_features:
+            best_line = line_features[0]
+            self.get_logger().debug(
+                "custom line feature detected: "
+                f"center=({best_line.center_x:.3f}, {best_line.center_y:.3f}) "
+                f"yaw={best_line.yaw:.3f} length={best_line.length:.3f} "
+                f"width={best_line.width:.3f} points={best_line.point_count}"
+            )
+        return poles, fences, line_features
+
+    def _custom_pattern_mount_transform(self) -> tuple[float, float, float]:
+        if str(self.get_parameter("custom_pattern_frame").value).lower() == "scan":
+            return 0.0, 0.0, 0.0
+        return (
+            float(self.get_parameter("laser_x").value),
+            float(self.get_parameter("laser_y").value),
+            float(self.get_parameter("laser_yaw").value),
+        )
+
+    def _custom_pattern_frame_id(self, scan: LaserScan) -> str:
+        if str(self.get_parameter("custom_pattern_frame").value).lower() == "scan":
+            return scan.header.frame_id
+        return self.base_frame
+
+    def _marker_frame_id(self, scan: LaserScan) -> str:
+        if str(self.get_parameter("visualization_frame").value).lower() == "scan":
+            return scan.header.frame_id
+        return self.base_frame
 
     def _motion_is_plausible(self, delta: Transform2D) -> bool:
         max_translation = float(self.get_parameter("max_motion_translation").value)
@@ -301,7 +371,7 @@ class ScanFeatureMatcherNode(Node):
     ) -> None:
         poses = PoseArray()
         poses.header.stamp = scan.header.stamp
-        poses.header.frame_id = self.base_frame
+        poses.header.frame_id = self._custom_pattern_frame_id(scan)
         for fence in fences:
             pose = Pose()
             pose.position.x = fence.center_x
@@ -311,6 +381,21 @@ class ScanFeatureMatcherNode(Node):
             poses.poses.append(pose)
         self.fence_pose_pub.publish(poses)
 
+    def _publish_line_feature_poses(
+        self, scan: LaserScan, line_features: List[LineFeatureDetection]
+    ) -> None:
+        poses = PoseArray()
+        poses.header.stamp = scan.header.stamp
+        poses.header.frame_id = self._custom_pattern_frame_id(scan)
+        for line_feature in line_features:
+            pose = Pose()
+            pose.position.x = line_feature.center_x
+            pose.position.y = line_feature.center_y
+            pose.orientation.z = math.sin(line_feature.yaw * 0.5)
+            pose.orientation.w = math.cos(line_feature.yaw * 0.5)
+            poses.poses.append(pose)
+        self.line_feature_pose_pub.publish(poses)
+
     def _publish_markers(
         self,
         scan: LaserScan,
@@ -319,11 +404,12 @@ class ScanFeatureMatcherNode(Node):
         delta: Optional[Transform2D],
         poles: List[PoleDetection],
         fences: List[FenceDetection],
+        line_features: List[LineFeatureDetection],
     ) -> None:
         marker_array = MarkerArray()
         delete_marker = Marker()
         delete_marker.header.stamp = scan.header.stamp
-        delete_marker.header.frame_id = self.base_frame
+        delete_marker.header.frame_id = self._marker_frame_id(scan)
         delete_marker.action = Marker.DELETEALL
         marker_array.markers.append(delete_marker)
 
@@ -337,6 +423,10 @@ class ScanFeatureMatcherNode(Node):
         marker_array.markers.append(self._pole_marker(scan, poles))
         marker_array.markers.append(self._fence_marker(scan, fences))
         marker_array.markers.append(self._fence_center_marker(scan, fences))
+        marker_array.markers.append(self._line_feature_marker(scan, line_features))
+        marker_array.markers.append(
+            self._line_feature_center_marker(scan, line_features)
+        )
         self.marker_pub.publish(marker_array)
 
     def _feature_marker(
@@ -349,7 +439,7 @@ class ScanFeatureMatcherNode(Node):
     ) -> Marker:
         marker = Marker()
         marker.header.stamp = scan.header.stamp
-        marker.header.frame_id = self.base_frame
+        marker.header.frame_id = self._custom_pattern_frame_id(scan)
         marker.ns = f"scan_{kind}_features"
         marker.id = marker_id
         marker.type = Marker.SPHERE_LIST
@@ -376,7 +466,7 @@ class ScanFeatureMatcherNode(Node):
     ) -> Marker:
         marker = Marker()
         marker.header.stamp = scan.header.stamp
-        marker.header.frame_id = self.base_frame
+        marker.header.frame_id = self._custom_pattern_frame_id(scan)
         marker.ns = "scan_feature_matches"
         marker.id = 3
         marker.type = Marker.LINE_LIST
@@ -404,7 +494,7 @@ class ScanFeatureMatcherNode(Node):
     ) -> Marker:
         marker = Marker()
         marker.header.stamp = scan.header.stamp
-        marker.header.frame_id = self.base_frame
+        marker.header.frame_id = self._custom_pattern_frame_id(scan)
         marker.ns = "custom_pole_candidates"
         marker.id = 4
         marker.type = Marker.SPHERE_LIST
@@ -426,7 +516,7 @@ class ScanFeatureMatcherNode(Node):
     ) -> Marker:
         marker = Marker()
         marker.header.stamp = scan.header.stamp
-        marker.header.frame_id = self.base_frame
+        marker.header.frame_id = self._marker_frame_id(scan)
         marker.ns = "custom_five_pole_fence"
         marker.id = 5
         marker.type = Marker.LINE_LIST
@@ -448,7 +538,7 @@ class ScanFeatureMatcherNode(Node):
     ) -> Marker:
         marker = Marker()
         marker.header.stamp = scan.header.stamp
-        marker.header.frame_id = self.base_frame
+        marker.header.frame_id = self._marker_frame_id(scan)
         marker.ns = "custom_fence_centers"
         marker.id = 6
         marker.type = Marker.SPHERE_LIST
@@ -463,6 +553,51 @@ class ScanFeatureMatcherNode(Node):
         marker.points = [
             Point(x=fence.center_x, y=fence.center_y, z=0.18)
             for fence in fences
+        ]
+        return marker
+
+    def _line_feature_marker(
+        self, scan: LaserScan, line_features: List[LineFeatureDetection]
+    ) -> Marker:
+        marker = Marker()
+        marker.header.stamp = scan.header.stamp
+        marker.header.frame_id = self._custom_pattern_frame_id(scan)
+        marker.ns = "custom_yellow_line_features"
+        marker.id = 7
+        marker.type = Marker.LINE_LIST
+        marker.action = Marker.ADD
+        marker.scale.x = 0.04
+        marker.color.r = 1.0
+        marker.color.g = 0.95
+        marker.color.b = 0.0
+        marker.color.a = 1.0
+
+        for line_feature in line_features:
+            start, end = line_feature.endpoints
+            marker.points.append(Point(x=start[0], y=start[1], z=0.16))
+            marker.points.append(Point(x=end[0], y=end[1], z=0.16))
+        return marker
+
+    def _line_feature_center_marker(
+        self, scan: LaserScan, line_features: List[LineFeatureDetection]
+    ) -> Marker:
+        marker = Marker()
+        marker.header.stamp = scan.header.stamp
+        marker.header.frame_id = self._custom_pattern_frame_id(scan)
+        marker.ns = "custom_yellow_line_centers"
+        marker.id = 8
+        marker.type = Marker.SPHERE_LIST
+        marker.action = Marker.ADD
+        marker.scale.x = 0.10
+        marker.scale.y = 0.10
+        marker.scale.z = 0.10
+        marker.color.r = 1.0
+        marker.color.g = 0.95
+        marker.color.b = 0.0
+        marker.color.a = 1.0
+        marker.points = [
+            Point(x=line.center_x, y=line.center_y, z=0.22)
+            for line in line_features
         ]
         return marker
 

@@ -8,7 +8,8 @@
 
 - `scan_feature_matcher/odom` (`nav_msgs/msg/Odometry`): 基于相邻帧匹配累积得到的里程计。
 - `scan_feature_matcher/markers` (`visualization_msgs/msg/MarkerArray`): RViz 调试标记，包含当前帧特征点和匹配线。
-- `scan_feature_matcher/fence_poses` (`geometry_msgs/msg/PoseArray`): 识别到的自定义五柱栅栏地标位姿，坐标在 `base_link` 下。
+- `scan_feature_matcher/fence_poses` (`geometry_msgs/msg/PoseArray`): 识别到的自定义五柱栅栏地标位姿，坐标系由 `custom_pattern_frame` 决定。
+- `scan_feature_matcher/line_feature_poses` (`geometry_msgs/msg/PoseArray`): 识别到的短直线点簇特征，适合先不考虑底盘时查看截图中黄色框里的目标。
 - `odom -> base_link` TF: 默认开启，可通过 `publish_tf` 关闭。
 
 ## 构建
@@ -50,7 +51,7 @@ laser_yaw: 0.0    # 雷达相对 base_link 的偏航角，单位 rad
 - 底盘速度较快：适当增大 `max_correspondence_distance` 和 `max_motion_translation`。
 - 环境几何单一：单线雷达只提供 2D 平面信息，长走廊、开阔空地等场景容易退化，需要轮速计/IMU 或地图约束辅助。
 
-## 自定义特征：五柱栅栏
+## 自定义特征：五柱栅栏和短直线点簇
 
 如果需要识别“由间隔 10cm 的五根柱子组成的栅栏”，节点会按以下步骤标识：
 
@@ -63,6 +64,7 @@ laser_yaw: 0.0    # 雷达相对 base_link 的偏航角，单位 rad
 
 ```yaml
 custom_pattern_enabled: true
+custom_pattern_frame: scan       # 先不考虑底盘时，直接在 /scan 的 frame 下识别
 
 # 单根柱子的 LaserScan 点簇约束
 pole_cluster_jump_threshold: 0.06  # 相邻激光点距离超过该值则切分点簇
@@ -82,12 +84,29 @@ fence_max_candidate_poles: 30
 fence_max_detections: 3
 ```
 
+截图中黄色框里的目标也可以看成“短直线点簇”。如果五根柱子在 LaserScan 中已经连成一小段，短直线检测比单独分割每根柱子更稳：
+
+```yaml
+visualization_frame: scan        # Marker 直接发布在 /scan 的 header.frame_id 下
+line_cluster_jump_threshold: 0.16
+line_min_points: 5
+line_min_length: 0.25
+line_max_length: 0.75
+line_max_width: 0.08
+line_max_range: 6.0
+line_max_detections: 5
+```
+
+先不考虑底盘时，RViz 的 `Fixed Frame` 建议直接设置成 `/scan` 消息里的 `header.frame_id`，例如 `laser_frame`。这样不需要 `base_link` TF 也能看到自定义特征 Marker。
+
 实际使用时建议先在 RViz 中看候选柱子是否稳定：
 
 - 候选柱子太少：增大 `pole_cluster_jump_threshold` 或 `pole_max_width`，降低 `pole_min_points`。
 - 误把其他物体识别成柱子：减小 `pole_max_width`、`pole_max_range`，或增大 `pole_min_points`。
 - 五根柱子已识别但栅栏不输出：增大 `fence_spacing_tolerance` 或 `fence_collinearity_tolerance`。
 - 误识别栅栏：减小 `fence_spacing_tolerance`、`fence_collinearity_tolerance` 或 `fence_max_pattern_error`。
+- 黄色框里的短线识别不到：增大 `line_cluster_jump_threshold`、放宽 `line_max_width`，或降低 `line_min_points`。
+- 把底盘弧线也误识别成黄色特征：减小 `line_max_width` 或收紧 `line_min_length`/`line_max_length`。
 
 ## 可视化
 
@@ -95,8 +114,9 @@ fence_max_detections: 3
 
 1. `LaserScan` 显示 `/scan`
 2. `MarkerArray` 显示 `/scan_feature_matcher/markers`
-3. `PoseArray` 显示 `/scan_feature_matcher/fence_poses`
-4. `Odometry` 显示 `/scan_feature_matcher/odom`
+3. `PoseArray` 显示 `/scan_feature_matcher/line_feature_poses`
+4. `PoseArray` 显示 `/scan_feature_matcher/fence_poses`
+5. `Odometry` 显示 `/scan_feature_matcher/odom`
 
 `/scan_feature_matcher/markers` 中的颜色含义：
 
@@ -105,5 +125,6 @@ fence_max_detections: 3
 - 蓝色线：相邻帧普通特征匹配
 - 紫色点：候选柱子
 - 红色线/红色点：识别到的五柱栅栏和栅栏中心
+- 黄色线/黄色点：截图中黄色框这类短直线自定义特征和中心
 
 固定坐标系可以设为 `odom`。如果系统中已有其他里程计发布 `odom -> base_link`，请将本节点的 `publish_tf` 设为 `false`，避免 TF 冲突。

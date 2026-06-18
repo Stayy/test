@@ -105,6 +105,13 @@ line_isolation_enabled: true
 line_isolation_lateral_tolerance: 0.08
 line_isolation_extension: 0.20
 line_max_detections: 5
+line_tracking_enabled: true
+line_tracking_confirmations_required: 2
+line_tracking_hold_frames: 3
+line_tracking_max_match_distance: 0.18
+line_tracking_max_match_yaw: 0.35
+line_tracking_max_match_length_delta: 0.20
+line_tracking_smoothing_alpha: 0.55
 ```
 
 先不考虑底盘时，RViz 的 `Fixed Frame` 建议直接设置成 `/scan` 消息里的 `header.frame_id`，例如 `laser_frame`。这样不需要 `base_link` TF 也能看到自定义特征 Marker。
@@ -123,6 +130,8 @@ line_max_detections: 5
 - 左右两类目标旁边有离群点导致漏检：增大 `line_hypothesis_lateral_tolerance` 或 `line_hypothesis_endpoint_margin`。
 - 黄色框墙面被误识别为目标：保持 `line_isolation_enabled: true`，增大 `line_isolation_extension` 或 `line_isolation_lateral_tolerance`。
 - 把底盘弧线也误识别成黄色特征：减小 `line_max_width` 或收紧 `line_min_length`/`line_max_length`。
+- 黄线显示不稳定/闪烁：增大 `line_tracking_confirmations_required` 或 `line_tracking_hold_frames`，减小 `line_tracking_smoothing_alpha`。
+- 黄线响应太慢：减小 `line_tracking_confirmations_required` 或 `line_tracking_hold_frames`，增大 `line_tracking_smoothing_alpha`。
 
 ## 可视化
 

@@ -110,6 +110,13 @@ scan_feature_matcher:
     # line_isolation_lateral_tolerance：检查周围是否为空时的横向范围，单位 m。
     # line_isolation_extension：检查短线两端是否继续延伸时的长度，墙面误检时可增大。
     # line_max_detections：每帧最多输出几个短线特征。
+    # line_tracking_enabled：是否启用时间稳定，减少 RViz 中黄线闪烁。
+    # line_tracking_confirmations_required：连续命中多少帧后才确认发布，越大越稳但响应越慢。
+    # line_tracking_hold_frames：短暂漏检时保持上一结果的帧数。
+    # line_tracking_max_match_distance：相邻帧认为是同一目标的最大中心距离，单位 m。
+    # line_tracking_max_match_yaw：相邻帧认为是同一目标的最大角度差，单位 rad。
+    # line_tracking_max_match_length_delta：相邻帧认为是同一目标的最大长度差，单位 m。
+    # line_tracking_smoothing_alpha：平滑系数，越小越稳，越大越跟手。
     line_cluster_jump_threshold: 0.16
     line_min_points: 5
     line_min_length: 0.25
@@ -127,3 +134,10 @@ scan_feature_matcher:
     line_isolation_lateral_tolerance: 0.08
     line_isolation_extension: 0.20
     line_max_detections: 5
+    line_tracking_enabled: true
+    line_tracking_confirmations_required: 2
+    line_tracking_hold_frames: 3
+    line_tracking_max_match_distance: 0.18
+    line_tracking_max_match_yaw: 0.35
+    line_tracking_max_match_length_delta: 0.20
+    line_tracking_smoothing_alpha: 0.55

@@ -33,6 +33,7 @@ from .patterns import (
     detect_fences_from_scan,
     detect_line_features_from_scan,
 )
+from .tracking import LineFeatureTracker, LineFeatureTrackingConfig
 
 
 class ScanFeatureMatcherNode(Node):
@@ -55,6 +56,7 @@ class ScanFeatureMatcherNode(Node):
         self.last_poles: List[PoleDetection] = []
         self.last_fences: List[FenceDetection] = []
         self.last_line_features: List[LineFeatureDetection] = []
+        self.line_feature_tracker = LineFeatureTracker()
 
         self.odom_pub = self.create_publisher(
             Odometry, "scan_feature_matcher/odom", 10
@@ -141,6 +143,13 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("line_isolation_lateral_tolerance", 0.08)
         self.declare_parameter("line_isolation_extension", 0.20)
         self.declare_parameter("line_max_detections", 5)
+        self.declare_parameter("line_tracking_enabled", True)
+        self.declare_parameter("line_tracking_confirmations_required", 2)
+        self.declare_parameter("line_tracking_hold_frames", 3)
+        self.declare_parameter("line_tracking_max_match_distance", 0.18)
+        self.declare_parameter("line_tracking_max_match_yaw", 0.35)
+        self.declare_parameter("line_tracking_max_match_length_delta", 0.20)
+        self.declare_parameter("line_tracking_smoothing_alpha", 0.55)
 
     def _scan_callback(self, scan: LaserScan) -> None:
         ranges = list(scan.ranges)
@@ -158,7 +167,8 @@ class ScanFeatureMatcherNode(Node):
             laser_y=float(self.get_parameter("laser_y").value),
             laser_yaw=float(self.get_parameter("laser_yaw").value),
         )
-        poles, fences, line_features = self._detect_custom_patterns(scan, ranges)
+        poles, fences, raw_line_features = self._detect_custom_patterns(scan, ranges)
+        line_features = self._stabilize_line_features(raw_line_features)
 
         matches: List[FeatureMatch] = []
         delta: Optional[Transform2D] = None
@@ -295,6 +305,35 @@ class ScanFeatureMatcherNode(Node):
             line_max_detections=int(
                 self.get_parameter("line_max_detections").value
             ),
+        )
+
+    def _line_tracking_config(self) -> LineFeatureTrackingConfig:
+        return LineFeatureTrackingConfig(
+            enabled=bool(self.get_parameter("line_tracking_enabled").value),
+            confirmations_required=int(
+                self.get_parameter("line_tracking_confirmations_required").value
+            ),
+            hold_frames=int(self.get_parameter("line_tracking_hold_frames").value),
+            max_match_distance=float(
+                self.get_parameter("line_tracking_max_match_distance").value
+            ),
+            max_match_yaw=float(
+                self.get_parameter("line_tracking_max_match_yaw").value
+            ),
+            max_match_length_delta=float(
+                self.get_parameter("line_tracking_max_match_length_delta").value
+            ),
+            smoothing_alpha=float(
+                self.get_parameter("line_tracking_smoothing_alpha").value
+            ),
+        )
+
+    def _stabilize_line_features(
+        self, line_features: List[LineFeatureDetection]
+    ) -> List[LineFeatureDetection]:
+        return self.line_feature_tracker.update(
+            line_features,
+            self._line_tracking_config(),
         )
 
     def _detect_custom_patterns(

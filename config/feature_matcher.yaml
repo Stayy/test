@@ -1,25 +1,46 @@
 scan_feature_matcher:
   ros__parameters:
+    # 输入 LaserScan 话题。
     scan_topic: /scan
+
+    # 底盘和里程计坐标系名称；只有需要底盘运动估计/TF 时才重点使用。
     base_frame: base_link
     odom_frame: odom
+
+    # 是否发布 odom -> base_link TF；如果系统已有其他里程计发布同名 TF，设为 false。
     publish_tf: true
+
+    # RViz Marker 使用的坐标系：
+    #   scan：直接使用 /scan 消息 header.frame_id，例如 laser_frame，先不考虑底盘时推荐。
+    #   base：使用 base_frame，需要 TF/安装参数正确。
     visualization_frame: scan
 
-    # Laser mounting pose relative to base_link.
-    # Measure these values after installing the lidar on the chassis.
+    # 雷达相对 base_link 的安装位姿。
+    # 先不考虑底盘时可以保持 0；后续把雷达装到底盘上后再实测填写。
     laser_x: 0.0
     laser_y: 0.0
     laser_yaw: 0.0
 
-    # Feature extraction.
+    # 普通几何特征提取参数，用于相邻帧匹配。
+    # corner_window：计算角点时左右各取多少个点。
+    # corner_threshold：角点强度阈值，越小角点越多，越大角点越少。
+    # range_jump_threshold：相邻激光距离突变阈值，用于提取边缘/断点。
+    # min_feature_separation：特征之间最小 scan 下标间隔，避免过密。
+    # max_features：每帧最多保留的普通特征数量。
     corner_window: 4
     corner_threshold: 0.28
     range_jump_threshold: 0.35
     min_feature_separation: 5
     max_features: 80
 
-    # Feature correspondence and robust transform estimation.
+    # 普通特征匹配和 RANSAC 位姿估计参数。
+    # max_correspondence_distance：两帧特征点允许的最大空间距离。
+    # max_bearing_shift：两帧特征方位角允许的最大变化，单位 rad。
+    # max_descriptor_distance：局部距离描述子的最大差异。
+    # descriptor_weight / bearing_weight：匹配评分中描述子和方位角的权重。
+    # min_matches：估计相对位姿至少需要的匹配数。
+    # ransac_inlier_threshold：RANSAC 内点残差阈值，单位 m。
+    # max_ransac_trials：RANSAC 最大采样次数。
     max_correspondence_distance: 0.9
     max_bearing_shift: 0.65
     max_descriptor_distance: 2.5
@@ -29,19 +50,40 @@ scan_feature_matcher:
     ransac_inlier_threshold: 0.18
     max_ransac_trials: 160
 
-    # Reject impossible per-scan chassis motion.
+    # 单帧运动合理性约束，超过则丢弃本次普通匹配结果。
+    # max_motion_translation：单帧最大平移，单位 m。
+    # max_motion_rotation：单帧最大旋转，单位 rad。
     max_motion_translation: 1.2
     max_motion_rotation: 0.8
 
-    # Custom landmark: a fence made from 5 small poles spaced by 10 cm.
+    # 自定义地标识别总开关。
     custom_pattern_enabled: true
+
+    # 自定义地标识别使用的坐标系：
+    #   scan：直接在雷达坐标系中识别，先看黄色特征/五柱特征时推荐。
+    #   base：先把点转换到 base_frame，再识别。
     custom_pattern_frame: scan
+
+    # 候选柱子提取参数。
+    # pole_cluster_jump_threshold：连续激光点间距超过该值就切分成不同点簇，单位 m。
+    # pole_min_points / pole_max_points：单根柱子点簇允许的点数范围。
+    # pole_min_width / pole_max_width：单根柱子点簇宽度范围，单位 m。
+    # pole_max_range：只识别该距离以内的候选柱子，单位 m。
     pole_cluster_jump_threshold: 0.06
     pole_min_points: 1
     pole_max_points: 12
     pole_min_width: 0.0
     pole_max_width: 0.08
     pole_max_range: 6.0
+
+    # 五柱栅栏模式参数。
+    # fence_pole_count：柱子数量，这里是 5 根。
+    # fence_spacing：相邻柱子的目标间距，0.10 表示 10cm。
+    # fence_spacing_tolerance：相邻间距允许误差，单位 m。
+    # fence_collinearity_tolerance：五根柱子共线允许误差，单位 m。
+    # fence_max_pattern_error：整体模式误差上限，越小越严格。
+    # fence_max_candidate_poles：参与组合搜索的最多候选柱子数量。
+    # fence_max_detections：每帧最多输出几个五柱栅栏。
     fence_pole_count: 5
     fence_spacing: 0.10
     fence_spacing_tolerance: 0.03
@@ -50,7 +92,14 @@ scan_feature_matcher:
     fence_max_candidate_poles: 30
     fence_max_detections: 3
 
-    # Custom landmark in the screenshot: a short straight scan cluster.
+    # 截图黄色框特征：短直线点簇。
+    # 适合五根柱子在 LaserScan 中已经连成一小段时使用。
+    # line_cluster_jump_threshold：点间距小于该值会被归为同一短线点簇，单位 m。
+    # line_min_points：短线点簇至少需要多少个激光点。
+    # line_min_length / line_max_length：短线特征长度范围，单位 m。
+    # line_max_width：短线厚度/离直线的最大宽度，越小越不容易把弧线误识别成直线。
+    # line_max_range：只识别该距离以内的短线特征，单位 m。
+    # line_max_detections：每帧最多输出几个短线特征。
     line_cluster_jump_threshold: 0.16
     line_min_points: 5
     line_min_length: 0.25

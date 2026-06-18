@@ -145,6 +145,76 @@ class PatternDetectionTest(unittest.TestCase):
         self.assertEqual(features[0].point_count, 5)
         self.assertAlmostEqual(features[0].length, 0.48, places=2)
 
+    def test_detects_line_feature_when_each_pole_is_a_point_blob(self):
+        points = []
+        for y in (-0.24, -0.12, 0.0, 0.12, 0.24):
+            points.extend(
+                [
+                    (2.00, y - 0.015),
+                    (2.01, y),
+                    (2.00, y + 0.015),
+                ]
+            )
+        ranges, angle_min, angle_increment = _scan_for_points(points)
+        config = PolePatternConfig(
+            line_cluster_jump_threshold=0.08,
+            line_min_points=12,
+            line_min_length=0.25,
+            line_max_length=0.75,
+            line_max_width=0.04,
+            line_anchor_cluster_jump_threshold=0.04,
+            line_anchor_max_diameter=0.07,
+            line_min_anchor_count=5,
+            line_min_anchor_spacing=0.10,
+            line_group_max_anchor_gap=0.16,
+            line_hypothesis_lateral_tolerance=0.04,
+            line_isolation_enabled=True,
+        )
+
+        features = detect_line_features_from_scan(
+            ranges,
+            angle_min,
+            angle_increment,
+            range_min=0.05,
+            range_max=10.0,
+            config=config,
+        )
+
+        self.assertEqual(len(features), 1)
+        self.assertGreaterEqual(features[0].point_count, 12)
+        self.assertAlmostEqual(features[0].length, 0.48, places=2)
+
+    def test_rejects_line_feature_when_blob_is_too_large_for_one_pole(self):
+        points = []
+        for y in (-0.24, -0.12, 0.0, 0.12, 0.24):
+            points.extend([(2.0, y - 0.06), (2.0, y), (2.0, y + 0.06)])
+        ranges, angle_min, angle_increment = _scan_for_points(points)
+        config = PolePatternConfig(
+            line_cluster_jump_threshold=0.08,
+            line_min_points=12,
+            line_min_length=0.25,
+            line_max_length=0.75,
+            line_max_width=0.04,
+            line_anchor_cluster_jump_threshold=0.07,
+            line_anchor_max_diameter=0.05,
+            line_min_anchor_count=5,
+            line_min_anchor_spacing=0.10,
+            line_group_max_anchor_gap=0.16,
+            line_hypothesis_lateral_tolerance=0.04,
+            line_isolation_enabled=True,
+        )
+
+        features = detect_line_features_from_scan(
+            ranges,
+            angle_min,
+            angle_increment,
+            range_min=0.05,
+            range_max=10.0,
+            config=config,
+        )
+
+        self.assertEqual(features, [])
+
     def test_line_hypothesis_ignores_nearby_outlier(self):
         ranges, angle_min, angle_increment = _scan_for_points(
             [

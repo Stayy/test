@@ -95,6 +95,7 @@ line_max_length: 0.75
 line_max_width: 0.08
 line_max_range: 6.0
 line_anchor_cluster_jump_threshold: 0.06
+line_anchor_max_diameter: 0.09
 line_min_anchor_count: 4
 line_min_anchor_spacing: 0.10
 line_group_max_anchor_gap: 0.18
@@ -116,8 +117,9 @@ line_max_detections: 5
 - 误识别栅栏：减小 `fence_spacing_tolerance`、`fence_collinearity_tolerance` 或 `fence_max_pattern_error`。
 - 连成一段的黄色短线识别不到：增大 `line_cluster_jump_threshold`、放宽 `line_max_width`，或降低 `line_min_points`。
 - 蓝色框这类分离小簇没有合成短线：增大 `line_group_max_anchor_gap`，或降低 `line_min_anchor_count`。
+- 每根柱子显示成多个点的点堆：增大 `line_anchor_cluster_jump_threshold` 或 `line_anchor_max_diameter`。
 - 端部出现上下重叠点：保持 `line_min_anchor_spacing: 0.10`，算法会尝试剔除一个重叠点后匹配主体。
-- 小于 10cm 的密集点被误识别：保持或增大 `line_min_anchor_spacing`。
+- 小于 10cm 的密集点被误识别：保持或增大 `line_min_anchor_spacing`；该判断作用于点堆中心之间，不作用于点堆内部。
 - 左右两类目标旁边有离群点导致漏检：增大 `line_hypothesis_lateral_tolerance` 或 `line_hypothesis_endpoint_margin`。
 - 黄色框墙面被误识别为目标：保持 `line_isolation_enabled: true`，增大 `line_isolation_extension` 或 `line_isolation_lateral_tolerance`。
 - 把底盘弧线也误识别成黄色特征：减小 `line_max_width` 或收紧 `line_min_length`/`line_max_length`。

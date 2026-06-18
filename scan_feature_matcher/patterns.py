@@ -32,6 +32,7 @@ class PolePatternConfig:
     line_max_width: float = 0.08
     line_max_range: float = 6.0
     line_anchor_cluster_jump_threshold: float = 0.06
+    line_anchor_max_diameter: float = 0.09
     line_min_anchor_count: int = 4
     line_min_anchor_spacing: float = 0.10
     line_group_max_anchor_gap: float = 0.18
@@ -463,7 +464,7 @@ def _line_inlier_anchor_groups(
         dx = anchor.x - first.x
         dy = anchor.y - first.y
         projection = dx * axis_x + dy * axis_y
-        lateral_error = abs(dx * normal_x + dy * normal_y) + anchor.width * 0.5
+        lateral_error = abs(dx * normal_x + dy * normal_y)
         if projection < min_projection or projection > max_projection:
             continue
         if lateral_error > lateral_tolerance:
@@ -522,7 +523,7 @@ def _line_group_is_isolated(
         dy = anchor.y - center_y
         along = dx * axis_x + dy * axis_y
         across = -dx * axis_y + dy * axis_x
-        lateral_error = abs(across) + anchor.width * 0.5
+        lateral_error = abs(across)
         duplicate_tolerance = min(0.05, config.line_min_anchor_spacing * 0.5)
         if (
             lateral_error <= config.line_isolation_lateral_tolerance
@@ -547,10 +548,7 @@ def _cluster_to_line_anchor(
         return None
 
     width = _cluster_width(cluster)
-    max_anchor_width = max(
-        config.line_max_width, config.line_anchor_cluster_jump_threshold
-    )
-    if width > max_anchor_width:
+    if width > config.line_anchor_max_diameter:
         return None
 
     point_count = len(cluster)
@@ -631,7 +629,7 @@ def _anchors_to_line_feature(
         along = dx * axis_x + dy * axis_y
         across = -dx * axis_y + dy * axis_x
         projections.append(along)
-        lateral_errors.append(abs(across) + anchor.width * 0.5)
+        lateral_errors.append(abs(across))
 
     length = max(projections) - min(projections)
     width = max(lateral_errors, default=0.0) * 2.0

@@ -99,7 +99,8 @@ scan_feature_matcher:
     # line_min_length / line_max_length：短线特征长度范围，单位 m。
     # line_max_width：短线厚度/离直线的最大宽度，越小越不容易把弧线误识别成直线。
     # line_max_range：只识别该距离以内的短线特征，单位 m。
-    # line_anchor_cluster_jump_threshold：先把连续小点聚成锚点，超过该距离就分成不同锚点。
+    # line_anchor_cluster_jump_threshold：先把每根柱子的点堆聚成一个锚点，点堆内相邻点超过该距离就断开。
+    # line_anchor_max_diameter：单根柱子点堆允许的最大直径，雷达误差导致点堆变大时可增大。
     # line_min_anchor_count：蓝色框这类分离小簇至少需要多少个锚点才能合成短线。
     # line_min_anchor_spacing：相邻锚点最小间距，小于 0.10m 认为是墙面/密集噪声误检。
     # line_group_max_anchor_gap：同一短线内相邻锚点允许的最大间距，蓝色框识别不到时优先增大。
@@ -116,6 +117,7 @@ scan_feature_matcher:
     line_max_width: 0.08
     line_max_range: 6.0
     line_anchor_cluster_jump_threshold: 0.06
+    line_anchor_max_diameter: 0.09
     line_min_anchor_count: 4
     line_min_anchor_spacing: 0.10
     line_group_max_anchor_gap: 0.18

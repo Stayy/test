@@ -102,7 +102,8 @@ scan_feature_matcher:
     # line_anchor_cluster_jump_threshold：先把每根柱子的点堆聚成一个锚点，点堆内相邻点超过该距离就断开。
     # line_anchor_max_diameter：单根柱子点堆允许的最大直径，雷达误差导致点堆变大时可增大。
     # line_min_anchor_count：蓝色框这类分离小簇至少需要多少个锚点才能合成短线。
-    # line_min_anchor_spacing：相邻锚点最小间距，小于 0.10m 认为是墙面/密集噪声误检。
+    # line_min_anchor_spacing：相邻锚点名义最小间距，目标为 0.10m。
+    # line_anchor_spacing_tolerance：间距测量容差；设为 0 表示严格小于 10cm 一律拒绝。
     # line_group_max_anchor_gap：同一短线内相邻锚点允许的最大间距，蓝色框识别不到时优先增大。
     # line_hypothesis_lateral_tolerance：直线假设筛内点时允许的横向距离，左侧带噪声/轻微粘连时可增大。
     # line_hypothesis_endpoint_margin：直线两端额外搜索余量，端点漏检时可增大。
@@ -118,7 +119,7 @@ scan_feature_matcher:
     # line_tracking_max_match_length_delta：相邻帧认为是同一目标的最大长度差，单位 m。
     # line_tracking_smoothing_alpha：平滑系数，越小越稳，越大越跟手。
     line_cluster_jump_threshold: 0.16
-    line_min_points: 5
+    line_min_points: 4
     line_min_length: 0.25
     line_max_length: 0.75
     line_max_width: 0.08
@@ -127,6 +128,7 @@ scan_feature_matcher:
     line_anchor_max_diameter: 0.09
     line_min_anchor_count: 4
     line_min_anchor_spacing: 0.10
+    line_anchor_spacing_tolerance: 0.02
     line_group_max_anchor_gap: 0.18
     line_hypothesis_lateral_tolerance: 0.05
     line_hypothesis_endpoint_margin: 0.06

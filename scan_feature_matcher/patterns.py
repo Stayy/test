@@ -26,7 +26,7 @@ class PolePatternConfig:
     fence_max_candidate_poles: int = 30
     fence_max_detections: int = 3
     line_cluster_jump_threshold: float = 0.16
-    line_min_points: int = 5
+    line_min_points: int = 4
     line_min_length: float = 0.25
     line_max_length: float = 0.75
     line_max_width: float = 0.08
@@ -35,6 +35,7 @@ class PolePatternConfig:
     line_anchor_max_diameter: float = 0.09
     line_min_anchor_count: int = 4
     line_min_anchor_spacing: float = 0.10
+    line_anchor_spacing_tolerance: float = 0.02
     line_group_max_anchor_gap: float = 0.18
     line_hypothesis_lateral_tolerance: float = 0.05
     line_hypothesis_endpoint_margin: float = 0.06
@@ -661,10 +662,11 @@ def _anchors_to_line_feature(
         ),
         default=float("inf"),
     )
-    if (
-        len(anchors) > 1
-        and min_anchor_gap < config.line_min_anchor_spacing
-    ):
+    effective_min_anchor_spacing = max(
+        0.0,
+        config.line_min_anchor_spacing - config.line_anchor_spacing_tolerance,
+    )
+    if len(anchors) > 1 and min_anchor_gap < effective_min_anchor_spacing:
         return None
 
     first_anchor = anchors[0]

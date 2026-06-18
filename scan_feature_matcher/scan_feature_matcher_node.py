@@ -127,7 +127,7 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("fence_max_candidate_poles", 30)
         self.declare_parameter("fence_max_detections", 3)
         self.declare_parameter("line_cluster_jump_threshold", 0.16)
-        self.declare_parameter("line_min_points", 5)
+        self.declare_parameter("line_min_points", 4)
         self.declare_parameter("line_min_length", 0.25)
         self.declare_parameter("line_max_length", 0.75)
         self.declare_parameter("line_max_width", 0.08)
@@ -136,6 +136,7 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("line_anchor_max_diameter", 0.09)
         self.declare_parameter("line_min_anchor_count", 4)
         self.declare_parameter("line_min_anchor_spacing", 0.10)
+        self.declare_parameter("line_anchor_spacing_tolerance", 0.02)
         self.declare_parameter("line_group_max_anchor_gap", 0.18)
         self.declare_parameter("line_hypothesis_lateral_tolerance", 0.05)
         self.declare_parameter("line_hypothesis_endpoint_margin", 0.06)
@@ -283,6 +284,9 @@ class ScanFeatureMatcherNode(Node):
             ),
             line_min_anchor_spacing=float(
                 self.get_parameter("line_min_anchor_spacing").value
+            ),
+            line_anchor_spacing_tolerance=float(
+                self.get_parameter("line_anchor_spacing_tolerance").value
             ),
             line_group_max_anchor_gap=float(
                 self.get_parameter("line_group_max_anchor_gap").value

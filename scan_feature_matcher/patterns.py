@@ -34,6 +34,8 @@ class PolePatternConfig:
     line_anchor_cluster_jump_threshold: float = 0.06
     line_min_anchor_count: int = 3
     line_group_max_anchor_gap: float = 0.18
+    line_hypothesis_lateral_tolerance: float = 0.05
+    line_hypothesis_endpoint_margin: float = 0.06
     line_max_detections: int = 5
 
 
@@ -208,6 +210,7 @@ def detect_line_features_from_scan(
             detections.append(detection)
 
     detections.extend(_detect_grouped_line_features(points, config))
+    detections.extend(_detect_hypothesis_line_features(points, config))
     return _select_line_features(detections, config.line_max_detections)
 
 
@@ -366,15 +369,7 @@ def _cluster_to_line_feature(
 def _detect_grouped_line_features(
     points: Sequence[ScanPoint], config: PolePatternConfig
 ) -> List[LineFeatureDetection]:
-    clusters = _segment_points(
-        points, config.line_anchor_cluster_jump_threshold
-    )
-    anchors = [
-        anchor
-        for cluster in clusters
-        for anchor in [_cluster_to_line_anchor(cluster, config)]
-        if anchor is not None
-    ]
+    anchors = _line_anchors_from_points(points, config)
     if len(anchors) < config.line_min_anchor_count:
         return []
 
@@ -398,6 +393,93 @@ def _detect_grouped_line_features(
             if detection is not None:
                 detections.append(detection)
     return detections
+
+
+def _detect_hypothesis_line_features(
+    points: Sequence[ScanPoint], config: PolePatternConfig
+) -> List[LineFeatureDetection]:
+    anchors = _line_anchors_from_points(points, config)
+    if len(anchors) < config.line_min_anchor_count:
+        return []
+
+    detections: List[LineFeatureDetection] = []
+    for first_index, second_index in combinations(range(len(anchors)), 2):
+        first = anchors[first_index]
+        second = anchors[second_index]
+        span = math.hypot(second.x - first.x, second.y - first.y)
+        if span < config.line_min_length or span > config.line_max_length:
+            continue
+
+        yaw = math.atan2(second.y - first.y, second.x - first.x)
+        for group in _line_inlier_anchor_groups(first, second, yaw, anchors, config):
+            detection = _anchors_to_line_feature(group, config)
+            if detection is not None:
+                detections.append(detection)
+    return detections
+
+
+def _line_anchors_from_points(
+    points: Sequence[ScanPoint], config: PolePatternConfig
+) -> List[_LineAnchor]:
+    clusters = _segment_points(
+        points, config.line_anchor_cluster_jump_threshold
+    )
+    return [
+        anchor
+        for cluster in clusters
+        for anchor in [_cluster_to_line_anchor(cluster, config)]
+        if anchor is not None
+    ]
+
+
+def _line_inlier_anchor_groups(
+    first: _LineAnchor,
+    second: _LineAnchor,
+    yaw: float,
+    anchors: Sequence[_LineAnchor],
+    config: PolePatternConfig,
+) -> List[List[_LineAnchor]]:
+    axis_x = math.cos(yaw)
+    axis_y = math.sin(yaw)
+    normal_x = -axis_y
+    normal_y = axis_x
+    endpoint_span = (second.x - first.x) * axis_x + (second.y - first.y) * axis_y
+    min_projection = min(0.0, endpoint_span) - config.line_hypothesis_endpoint_margin
+    max_projection = max(0.0, endpoint_span) + config.line_hypothesis_endpoint_margin
+    lateral_tolerance = max(
+        config.line_hypothesis_lateral_tolerance,
+        config.line_max_width * 0.5,
+    )
+
+    projected_inliers = []
+    for anchor in anchors:
+        dx = anchor.x - first.x
+        dy = anchor.y - first.y
+        projection = dx * axis_x + dy * axis_y
+        lateral_error = abs(dx * normal_x + dy * normal_y) + anchor.width * 0.5
+        if projection < min_projection or projection > max_projection:
+            continue
+        if lateral_error > lateral_tolerance:
+            continue
+        projected_inliers.append((projection, anchor))
+
+    projected_inliers.sort(key=lambda item: item[0])
+    groups: List[List[_LineAnchor]] = []
+    current_group: List[_LineAnchor] = []
+    previous_projection = None
+    for projection, anchor in projected_inliers:
+        if (
+            previous_projection is not None
+            and projection - previous_projection > config.line_group_max_anchor_gap
+        ):
+            if len(current_group) >= config.line_min_anchor_count:
+                groups.append(current_group)
+            current_group = []
+        current_group.append(anchor)
+        previous_projection = projection
+    if len(current_group) >= config.line_min_anchor_count:
+        groups.append(current_group)
+    return groups
 
 
 def _cluster_to_line_anchor(

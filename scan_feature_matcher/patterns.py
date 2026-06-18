@@ -33,6 +33,7 @@ class PolePatternConfig:
     line_max_range: float = 6.0
     line_anchor_cluster_jump_threshold: float = 0.06
     line_min_anchor_count: int = 3
+    line_min_anchor_spacing: float = 0.10
     line_group_max_anchor_gap: float = 0.18
     line_hypothesis_lateral_tolerance: float = 0.05
     line_hypothesis_endpoint_margin: float = 0.06
@@ -610,6 +611,18 @@ def _anchors_to_line_feature(
     if (
         len(anchors) > 1
         and max_anchor_gap > config.line_group_max_anchor_gap
+    ):
+        return None
+    min_anchor_gap = min(
+        (
+            ordered_projections[index + 1] - ordered_projections[index]
+            for index in range(len(ordered_projections) - 1)
+        ),
+        default=float("inf"),
+    )
+    if (
+        len(anchors) > 1
+        and min_anchor_gap < config.line_min_anchor_spacing
     ):
         return None
 

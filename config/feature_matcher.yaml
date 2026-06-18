@@ -101,6 +101,7 @@ scan_feature_matcher:
     # line_max_range：只识别该距离以内的短线特征，单位 m。
     # line_anchor_cluster_jump_threshold：先把连续小点聚成锚点，超过该距离就分成不同锚点。
     # line_min_anchor_count：蓝色框这类分离小簇至少需要多少个锚点才能合成短线。
+    # line_min_anchor_spacing：相邻锚点最小间距，小于 0.10m 认为是墙面/密集噪声误检。
     # line_group_max_anchor_gap：同一短线内相邻锚点允许的最大间距，蓝色框识别不到时优先增大。
     # line_hypothesis_lateral_tolerance：直线假设筛内点时允许的横向距离，左侧带噪声/轻微粘连时可增大。
     # line_hypothesis_endpoint_margin：直线两端额外搜索余量，端点漏检时可增大。
@@ -116,6 +117,7 @@ scan_feature_matcher:
     line_max_range: 6.0
     line_anchor_cluster_jump_threshold: 0.06
     line_min_anchor_count: 3
+    line_min_anchor_spacing: 0.10
     line_group_max_anchor_gap: 0.18
     line_hypothesis_lateral_tolerance: 0.05
     line_hypothesis_endpoint_margin: 0.06

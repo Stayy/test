@@ -1,0 +1,33 @@
+scan_feature_matcher:
+  ros__parameters:
+    scan_topic: /scan
+    base_frame: base_link
+    odom_frame: odom
+    publish_tf: true
+
+    # Laser mounting pose relative to base_link.
+    # Measure these values after installing the lidar on the chassis.
+    laser_x: 0.0
+    laser_y: 0.0
+    laser_yaw: 0.0
+
+    # Feature extraction.
+    corner_window: 4
+    corner_threshold: 0.28
+    range_jump_threshold: 0.35
+    min_feature_separation: 5
+    max_features: 80
+
+    # Feature correspondence and robust transform estimation.
+    max_correspondence_distance: 0.9
+    max_bearing_shift: 0.65
+    max_descriptor_distance: 2.5
+    descriptor_weight: 0.35
+    bearing_weight: 0.15
+    min_matches: 3
+    ransac_inlier_threshold: 0.18
+    max_ransac_trials: 160
+
+    # Reject impossible per-scan chassis motion.
+    max_motion_translation: 1.2
+    max_motion_rotation: 0.8

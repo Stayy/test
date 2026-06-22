@@ -137,6 +137,8 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("line_min_anchor_count", 4)
         self.declare_parameter("line_min_anchor_spacing", 0.10)
         self.declare_parameter("line_anchor_spacing_tolerance", 0.02)
+        self.declare_parameter("line_template_spacing_tolerance", 0.04)
+        self.declare_parameter("line_template_lateral_tolerance", 0.14)
         self.declare_parameter("line_group_max_anchor_gap", 0.18)
         self.declare_parameter("line_hypothesis_lateral_tolerance", 0.05)
         self.declare_parameter("line_hypothesis_endpoint_margin", 0.06)
@@ -287,6 +289,12 @@ class ScanFeatureMatcherNode(Node):
             ),
             line_anchor_spacing_tolerance=float(
                 self.get_parameter("line_anchor_spacing_tolerance").value
+            ),
+            line_template_spacing_tolerance=float(
+                self.get_parameter("line_template_spacing_tolerance").value
+            ),
+            line_template_lateral_tolerance=float(
+                self.get_parameter("line_template_lateral_tolerance").value
             ),
             line_group_max_anchor_gap=float(
                 self.get_parameter("line_group_max_anchor_gap").value

@@ -36,6 +36,8 @@ class PolePatternConfig:
     line_min_anchor_count: int = 4
     line_min_anchor_spacing: float = 0.10
     line_anchor_spacing_tolerance: float = 0.02
+    line_template_spacing_tolerance: float = 0.04
+    line_template_lateral_tolerance: float = 0.14
     line_group_max_anchor_gap: float = 0.18
     line_hypothesis_lateral_tolerance: float = 0.05
     line_hypothesis_endpoint_margin: float = 0.06
@@ -218,6 +220,7 @@ def detect_line_features_from_scan(
     anchors = _line_anchors_from_points(points, config)
     detections.extend(_detect_grouped_line_features(anchors, config))
     detections.extend(_detect_hypothesis_line_features(anchors, config))
+    detections.extend(_detect_spacing_template_features(anchors, config))
     return _select_line_features(detections, config.line_max_detections)
 
 
@@ -425,6 +428,208 @@ def _detect_hypothesis_line_features(
                 _line_feature_candidates_from_group(group, anchors, config)
             )
     return detections
+
+
+def _detect_spacing_template_features(
+    anchors: Sequence[_LineAnchor], config: PolePatternConfig
+) -> List[LineFeatureDetection]:
+    anchor_count = max(config.line_min_anchor_count, config.fence_pole_count)
+    if len(anchors) < anchor_count:
+        return []
+
+    detections: List[LineFeatureDetection] = []
+    for group in combinations(anchors, anchor_count):
+        ordered_group = _order_anchors_by_principal_axis(group)
+        if not _anchor_spacing_matches_template(ordered_group, config):
+            continue
+        if not _curved_line_group_is_isolated(ordered_group, anchors, config):
+            continue
+        detection = _anchors_to_template_feature(ordered_group, config)
+        if detection is not None:
+            detections.append(detection)
+    return detections
+
+
+def _order_anchors_by_principal_axis(
+    anchors: Sequence[_LineAnchor],
+) -> Tuple[_LineAnchor, ...]:
+    point_count = sum(anchor.point_count for anchor in anchors)
+    center_x = sum(anchor.x * anchor.point_count for anchor in anchors) / point_count
+    center_y = sum(anchor.y * anchor.point_count for anchor in anchors) / point_count
+    yaw = _principal_axis_yaw_for_anchors(anchors, center_x, center_y)
+    axis_x = math.cos(yaw)
+    axis_y = math.sin(yaw)
+    return tuple(
+        anchor
+        for _, anchor in sorted(
+            (
+                (
+                    (anchor.x - center_x) * axis_x
+                    + (anchor.y - center_y) * axis_y,
+                    anchor,
+                )
+                for anchor in anchors
+            ),
+            key=lambda item: item[0],
+        )
+    )
+
+
+def _anchor_spacing_matches_template(
+    anchors: Sequence[_LineAnchor], config: PolePatternConfig
+) -> bool:
+    if len(anchors) < 2:
+        return False
+
+    min_spacing = max(
+        0.0,
+        config.line_min_anchor_spacing - config.line_anchor_spacing_tolerance,
+    )
+    max_spacing = config.line_min_anchor_spacing + config.line_template_spacing_tolerance
+    for first, second in zip(anchors, anchors[1:]):
+        spacing = math.hypot(second.x - first.x, second.y - first.y)
+        if spacing < min_spacing or spacing > max_spacing:
+            return False
+    return True
+
+
+def _curved_line_group_is_isolated(
+    group: Sequence[_LineAnchor],
+    all_anchors: Sequence[_LineAnchor],
+    config: PolePatternConfig,
+) -> bool:
+    if not config.line_isolation_enabled:
+        return True
+
+    group_indices = {index for anchor in group for index in anchor.scan_indices}
+    extended_segments = []
+    if len(group) >= 2:
+        first = group[0]
+        second = group[1]
+        first_yaw = math.atan2(first.y - second.y, first.x - second.x)
+        extended_segments.append(
+            (
+                first.x + math.cos(first_yaw) * config.line_isolation_extension,
+                first.y + math.sin(first_yaw) * config.line_isolation_extension,
+                first.x,
+                first.y,
+            )
+        )
+        before_last = group[-2]
+        last = group[-1]
+        last_yaw = math.atan2(last.y - before_last.y, last.x - before_last.x)
+        extended_segments.append(
+            (
+                last.x,
+                last.y,
+                last.x + math.cos(last_yaw) * config.line_isolation_extension,
+                last.y + math.sin(last_yaw) * config.line_isolation_extension,
+            )
+        )
+
+    for anchor in all_anchors:
+        if group_indices & set(anchor.scan_indices):
+            continue
+        for first, second in zip(group, group[1:]):
+            distance = _point_to_segment_distance(
+                anchor.x, anchor.y, first.x, first.y, second.x, second.y
+            )
+            if distance <= config.line_isolation_lateral_tolerance:
+                return False
+        for start_x, start_y, end_x, end_y in extended_segments:
+            distance = _point_to_segment_distance(
+                anchor.x, anchor.y, start_x, start_y, end_x, end_y
+            )
+            if distance <= config.line_isolation_lateral_tolerance:
+                return False
+    return True
+
+
+def _anchors_to_template_feature(
+    anchors: Sequence[_LineAnchor], config: PolePatternConfig
+) -> Optional[LineFeatureDetection]:
+    if len(anchors) < config.line_min_anchor_count:
+        return None
+
+    point_count = sum(anchor.point_count for anchor in anchors)
+    if point_count < config.line_min_points:
+        return None
+
+    center_x = sum(anchor.x * anchor.point_count for anchor in anchors) / point_count
+    center_y = sum(anchor.y * anchor.point_count for anchor in anchors) / point_count
+    center_range = math.hypot(center_x, center_y)
+    if config.line_max_range > 0.0 and center_range > config.line_max_range:
+        return None
+
+    first_anchor = anchors[0]
+    last_anchor = anchors[-1]
+    yaw = math.atan2(last_anchor.y - first_anchor.y, last_anchor.x - first_anchor.x)
+    axis_x = math.cos(yaw)
+    axis_y = math.sin(yaw)
+    projections = [
+        (anchor.x - center_x) * axis_x + (anchor.y - center_y) * axis_y
+        for anchor in anchors
+    ]
+    lateral_errors = [
+        abs(-(anchor.x - center_x) * axis_y + (anchor.y - center_y) * axis_x)
+        for anchor in anchors
+    ]
+    length = max(projections) - min(projections)
+    width = max(lateral_errors, default=0.0) * 2.0
+    if length < config.line_min_length or length > config.line_max_length:
+        return None
+    if width > config.line_template_lateral_tolerance:
+        return None
+
+    endpoint_a = (
+        center_x - axis_x * length * 0.5,
+        center_y - axis_y * length * 0.5,
+    )
+    endpoint_b = (
+        center_x + axis_x * length * 0.5,
+        center_y + axis_y * length * 0.5,
+    )
+    spacing_errors = []
+    for first, second in zip(anchors, anchors[1:]):
+        spacing = math.hypot(second.x - first.x, second.y - first.y)
+        spacing_errors.append(abs(spacing - config.line_min_anchor_spacing))
+    score = _rmse(lateral_errors) + _rmse(spacing_errors)
+    scan_indices = tuple(index for anchor in anchors for index in anchor.scan_indices)
+    return LineFeatureDetection(
+        center_x=center_x,
+        center_y=center_y,
+        yaw=normalize_angle(yaw),
+        length=length,
+        width=width,
+        point_count=point_count,
+        score=score,
+        scan_indices=scan_indices,
+        endpoints=(endpoint_a, endpoint_b),
+    )
+
+
+def _point_to_segment_distance(
+    point_x: float,
+    point_y: float,
+    start_x: float,
+    start_y: float,
+    end_x: float,
+    end_y: float,
+) -> float:
+    segment_x = end_x - start_x
+    segment_y = end_y - start_y
+    segment_length_sq = segment_x * segment_x + segment_y * segment_y
+    if segment_length_sq <= 1.0e-12:
+        return math.hypot(point_x - start_x, point_y - start_y)
+
+    t = (
+        (point_x - start_x) * segment_x
+        + (point_y - start_y) * segment_y
+    ) / segment_length_sq
+    t = max(0.0, min(1.0, t))
+    closest_x = start_x + t * segment_x
+    closest_y = start_y + t * segment_y
+    return math.hypot(point_x - closest_x, point_y - closest_y)
 
 
 def _line_anchors_from_points(

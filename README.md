@@ -93,6 +93,8 @@ line_anchor_max_diameter: 0.09
 line_min_anchor_count: 4
 line_min_anchor_spacing: 0.10
 line_anchor_spacing_tolerance: 0.02
+line_template_spacing_tolerance: 0.04
+line_template_lateral_tolerance: 0.14
 line_group_max_anchor_gap: 0.18
 
 # 直线假设和离群点容忍
@@ -123,6 +125,8 @@ line_tracking_smoothing_alpha: 0.55
 | `line_min_anchor_count` | 至少需要几个柱子锚点才能输出目标，默认允许 4 个可见锚点。 |
 | `line_min_anchor_spacing` | 柱子中心名义最小间距，目标为 `0.10m`。 |
 | `line_anchor_spacing_tolerance` | 间距测量容差；设为 `0.0` 表示严格小于 10cm 一律拒绝。 |
+| `line_template_spacing_tolerance` | 四柱模板允许相邻柱距偏离 10cm 的最大值。 |
+| `line_template_lateral_tolerance` | 四柱模板允许轻微弯曲或错位的横向宽度。 |
 | `line_isolation_extension` | 沿目标两端继续检查是否还有点，用于过滤墙。 |
 | `line_tracking_confirmations_required` | 连续命中多少帧后才发布。 |
 | `line_tracking_hold_frames` | 短暂漏检时保持上一结果的帧数。 |
@@ -134,6 +138,8 @@ line_tracking_smoothing_alpha: 0.55
 - 大块墙面/物体被合成柱子点堆：减小 `line_anchor_max_diameter`。
 - 只看到 4 根柱子时不输出：确认 `line_min_anchor_count: 4`、`line_min_points: 4`。
 - 真实 10cm 目标因为误差被过滤：增大 `line_anchor_spacing_tolerance`，例如 `0.03`。
+- 四根柱子略弯/不完全共线但应识别：增大 `line_template_lateral_tolerance`。
+- 相邻柱距看起来接近 10cm 但仍不识别：增大 `line_template_spacing_tolerance`。
 - 必须严格小于 10cm 一律拒绝：设置 `line_anchor_spacing_tolerance: 0.0`。
 - 分离小簇没有合成短线：增大 `line_group_max_anchor_gap`。
 - 端部出现上下重叠点：保持 `line_min_anchor_spacing: 0.10`，算法会尝试剔除一个重叠点后匹配主体。

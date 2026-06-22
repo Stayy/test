@@ -138,6 +138,39 @@ class PatternDetectionTest(unittest.TestCase):
         self.assertEqual(len(features), 1)
         self.assertEqual(features[0].point_count, 4)
 
+    def test_detects_slightly_curved_four_pole_railing_template(self):
+        ranges, angle_min, angle_increment = _scan_for_points(
+            [(2.00, -0.18), (2.06, -0.06), (2.02, 0.06), (2.00, 0.18)]
+        )
+        config = PolePatternConfig(
+            line_cluster_jump_threshold=0.08,
+            line_min_points=4,
+            line_min_length=0.25,
+            line_max_length=0.75,
+            line_max_width=0.03,
+            line_anchor_cluster_jump_threshold=0.03,
+            line_min_anchor_count=4,
+            line_min_anchor_spacing=0.10,
+            line_anchor_spacing_tolerance=0.02,
+            line_template_spacing_tolerance=0.04,
+            line_template_lateral_tolerance=0.14,
+            line_group_max_anchor_gap=0.16,
+            line_hypothesis_lateral_tolerance=0.03,
+            line_isolation_enabled=True,
+        )
+
+        features = detect_line_features_from_scan(
+            ranges,
+            angle_min,
+            angle_increment,
+            range_min=0.05,
+            range_max=10.0,
+            config=config,
+        )
+
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0].point_count, 4)
+
     def test_allows_slightly_under_ten_cm_spacing_with_tolerance(self):
         ranges, angle_min, angle_increment = _scan_for_points(
             [(2.0, -0.18), (2.0, -0.09), (2.0, 0.0), (2.0, 0.09), (2.0, 0.18)]

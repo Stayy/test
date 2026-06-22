@@ -8,7 +8,7 @@
 
 - `scan_feature_matcher/odom` (`nav_msgs/msg/Odometry`): 基于相邻帧匹配累积得到的里程计。
 - `scan_feature_matcher/markers` (`visualization_msgs/msg/MarkerArray`): RViz 调试标记，包含当前帧特征点和匹配线。
-- `scan_feature_matcher/fence_poses` (`geometry_msgs/msg/PoseArray`): 识别到的自定义五柱栅栏地标位姿，坐标系由 `custom_pattern_frame` 决定。
+- `scan_feature_matcher/fence_poses` (`geometry_msgs/msg/PoseArray`): 识别到的自定义四柱栏杆地标位姿，坐标系由 `custom_pattern_frame` 决定。
 - `scan_feature_matcher/line_feature_poses` (`geometry_msgs/msg/PoseArray`): 识别到的短直线点簇特征，适合先不考虑底盘时查看截图中黄色框里的目标。
 - `odom -> base_link` TF: 默认开启，可通过 `publish_tf` 关闭。
 
@@ -53,7 +53,7 @@ laser_yaw: 0.0    # 雷达相对 base_link 的偏航角，单位 rad
 
 ## 自定义目标：10cm 间距柱子特征
 
-当前主要目标是识别一组人工特征：若干根小柱子基本共线，柱子中心之间的名义间距约为 `10cm`。实际在 RViz 中，一根柱子可能表现为：
+当前主要目标是识别一组人工特征：四根小柱子基本共线，柱子中心之间的名义间距约为 `10cm`。实际在 RViz 中，一根柱子可能表现为：
 
 - 1 个红点
 - 多个红点组成的小点堆
@@ -143,12 +143,12 @@ line_tracking_smoothing_alpha: 0.55
 
 先不考虑底盘时，RViz 的 `Fixed Frame` 建议直接设置成 `/scan` 消息里的 `header.frame_id`，例如 `laser_frame`。这样不需要 `base_link` TF 也能看到自定义特征 Marker。
 
-## 兼容的五柱栅栏输出
+## 兼容的四柱栏杆输出
 
-除了短直线地标，节点仍保留“五柱栅栏”检测输出。它使用候选柱子组合搜索，输出到 `/scan_feature_matcher/fence_poses`，主要参数如下：
+除了短直线地标，节点仍保留“四柱栏杆”检测输出。它使用候选柱子组合搜索，输出到 `/scan_feature_matcher/fence_poses`，主要参数如下：
 
 ```yaml
-fence_pole_count: 5
+fence_pole_count: 4
 fence_spacing: 0.10
 fence_spacing_tolerance: 0.03
 fence_collinearity_tolerance: 0.025
@@ -173,7 +173,7 @@ fence_max_detections: 3
 - 橙色点：普通距离断点特征
 - 蓝色线：相邻帧普通特征匹配
 - 紫色点：候选柱子
-- 红色线/红色点：识别到的五柱栅栏和栅栏中心
+- 红色线/红色点：识别到的四柱栏杆和栏杆中心
 - 黄色线/黄色点：截图中黄色框这类短直线自定义特征和中心
 
 固定坐标系可以设为 `odom`。如果系统中已有其他里程计发布 `odom -> base_link`，请将本节点的 `publish_tf` 设为 `false`，避免 TF 冲突。

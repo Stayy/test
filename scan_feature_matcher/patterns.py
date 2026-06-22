@@ -18,7 +18,7 @@ class PolePatternConfig:
     pole_min_width: float = 0.0
     pole_max_width: float = 0.08
     pole_max_range: float = 6.0
-    fence_pole_count: int = 5
+    fence_pole_count: int = 4
     fence_spacing: float = 0.10
     fence_spacing_tolerance: float = 0.03
     fence_collinearity_tolerance: float = 0.025

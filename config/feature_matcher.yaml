@@ -60,7 +60,7 @@ scan_feature_matcher:
     custom_pattern_enabled: true
 
     # 自定义地标识别使用的坐标系：
-    #   scan：直接在雷达坐标系中识别，先看黄色特征/五柱特征时推荐。
+    #   scan：直接在雷达坐标系中识别，先看黄色特征/四柱特征时推荐。
     #   base：先把点转换到 base_frame，再识别。
     custom_pattern_frame: scan
 
@@ -76,15 +76,15 @@ scan_feature_matcher:
     pole_max_width: 0.08
     pole_max_range: 6.0
 
-    # 五柱栅栏模式参数。
-    # fence_pole_count：柱子数量，这里是 5 根。
+    # 四柱栏杆模式参数。
+    # fence_pole_count：柱子数量，这里是 4 根。
     # fence_spacing：相邻柱子的目标间距，0.10 表示 10cm。
     # fence_spacing_tolerance：相邻间距允许误差，单位 m。
     # fence_collinearity_tolerance：五根柱子共线允许误差，单位 m。
     # fence_max_pattern_error：整体模式误差上限，越小越严格。
     # fence_max_candidate_poles：参与组合搜索的最多候选柱子数量。
-    # fence_max_detections：每帧最多输出几个五柱栅栏。
-    fence_pole_count: 5
+    # fence_max_detections：每帧最多输出几个四柱栏杆。
+    fence_pole_count: 4
     fence_spacing: 0.10
     fence_spacing_tolerance: 0.03
     fence_collinearity_tolerance: 0.025

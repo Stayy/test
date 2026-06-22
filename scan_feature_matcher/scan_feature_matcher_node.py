@@ -119,7 +119,7 @@ class ScanFeatureMatcherNode(Node):
         self.declare_parameter("pole_min_width", 0.0)
         self.declare_parameter("pole_max_width", 0.08)
         self.declare_parameter("pole_max_range", 6.0)
-        self.declare_parameter("fence_pole_count", 5)
+        self.declare_parameter("fence_pole_count", 4)
         self.declare_parameter("fence_spacing", 0.10)
         self.declare_parameter("fence_spacing_tolerance", 0.03)
         self.declare_parameter("fence_collinearity_tolerance", 0.025)
@@ -600,7 +600,7 @@ class ScanFeatureMatcherNode(Node):
         marker = Marker()
         marker.header.stamp = scan.header.stamp
         marker.header.frame_id = self._marker_frame_id(scan)
-        marker.ns = "custom_five_pole_fence"
+        marker.ns = "custom_four_pole_railing"
         marker.id = 5
         marker.type = Marker.LINE_LIST
         marker.action = Marker.ADD

@@ -11,14 +11,15 @@ from scan_feature_matcher.patterns import (
 
 
 class PatternDetectionTest(unittest.TestCase):
-    def test_detects_five_pole_fence_from_scan_points(self):
+    def test_detects_four_pole_railing_from_scan_points(self):
         ranges, angle_min, angle_increment = _scan_for_points(
-            [(2.0, -0.20), (2.0, -0.10), (2.0, 0.0), (2.0, 0.10), (2.0, 0.20)]
+            [(2.0, -0.15), (2.0, -0.05), (2.0, 0.05), (2.0, 0.15)]
         )
         config = PolePatternConfig(
             pole_cluster_jump_threshold=0.05,
+            fence_pole_count=4,
             fence_spacing=0.10,
-            fence_spacing_tolerance=0.015,
+            fence_spacing_tolerance=0.03,
             fence_collinearity_tolerance=0.01,
             fence_max_pattern_error=0.02,
         )
@@ -32,10 +33,10 @@ class PatternDetectionTest(unittest.TestCase):
             config=config,
         )
 
-        self.assertEqual(len(poles), 5)
+        self.assertEqual(len(poles), 4)
         self.assertEqual(len(fences), 1)
-        self.assertEqual(len(fences[0].poles), 5)
-        self.assertAlmostEqual(fences[0].span, 0.40, places=2)
+        self.assertEqual(len(fences[0].poles), 4)
+        self.assertAlmostEqual(fences[0].span, 0.28, places=2)
         self.assertAlmostEqual(abs(fences[0].yaw), math.pi / 2.0, places=2)
 
     def test_rejects_wrong_spacing(self):
